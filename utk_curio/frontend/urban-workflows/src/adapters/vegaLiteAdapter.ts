@@ -1,10 +1,4 @@
-/**
- * VegaLiteAdapter: GrammarAdapter implementation for Vega-Lite visualizations.
- *
- * Wraps the Vega-Lite compile + Vega View creation logic that was previously
- * embedded inside useVega / VegaBox. This adapter can be used standalone or
- * via the grammar adapter registry.
- */
+/* Updated vegaLiteAdapter.ts that renders VegaLite without going to useVega*/
 
 import { GrammarAdapter, registerGrammarAdapter } from '../registry/grammarAdapter';
 import { parseDataframe, parseGeoDataframe } from '../utils/parsing';
@@ -35,8 +29,11 @@ async function parseInputData(input: any): Promise<any[]> {
     const fetched = await fetchData(input.path);
     return parser(fetched.data);
   }
+
   return parser(input.data);
 }
+
+let currentView: any = null;
 
 export const vegaLiteAdapter: GrammarAdapter = {
   grammarId: 'vega-lite',
@@ -44,7 +41,7 @@ export const vegaLiteAdapter: GrammarAdapter = {
   validate(spec: unknown): boolean {
     try {
       const parsed = typeof spec === 'string' ? JSON.parse(spec) : spec;
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+      return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed);
     } catch {
       return false;
     }
@@ -54,16 +51,31 @@ export const vegaLiteAdapter: GrammarAdapter = {
     container: HTMLElement,
     spec: unknown,
     data?: unknown,
-  ): Promise<void> {
-    const specObj = typeof spec === 'string' ? JSON.parse(spec as string) : { ...spec as any };
-    const inputData = data as any;
+    options?: { interactions?: unknown; resolutionMode?: string }
+  ): Promise<any> {
+    const specObj =
+      typeof spec === 'string'
+        ? JSON.parse(spec as string)
+        : { ...(spec as any) };
 
+    const inputData = data as any;
     const values = await parseInputData(inputData);
+
     specObj.data = { values, name: 'data' };
     specObj.height = 'container';
     specObj.width = 'container';
 
+    // finalize previous view if present
+    if (currentView) {
+      try {
+        currentView.finalize();
+      } catch (e) {
+        console.warn('Failed to finalize previous Vega view:', e);
+      }
+    }
+
     const vegaSpec = lite.compile(specObj).spec;
+
     const view = new vega.View(vega.parse(vegaSpec))
       .logLevel(vega.Warn)
       .renderer('svg')
@@ -71,7 +83,28 @@ export const vegaLiteAdapter: GrammarAdapter = {
       .hover();
 
     await view.runAsync();
+
+    // adjust parent padding if Vega bindings are present
+    const parentContainer = container.parentElement;
+    if (parentContainer) {
+      const hasBindings = container.querySelector('.vega-bind') !== null;
+      parentContainer.style.paddingBottom = hasBindings ? '25px' : '';
+    }
+
+    currentView = view;
     return view;
+  },
+
+  cleanup(): void {
+    if (currentView) {
+      try {
+        currentView.finalize();
+      } catch (e) {
+        console.warn('Failed to cleanup Vega view:', e);
+      } finally {
+        currentView = null;
+      }
+    }
   },
 
   getDefaultSpec(): unknown {
@@ -87,3 +120,4 @@ export const vegaLiteAdapter: GrammarAdapter = {
 };
 
 registerGrammarAdapter(vegaLiteAdapter);
+

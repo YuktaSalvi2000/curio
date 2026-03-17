@@ -8,7 +8,9 @@ export { useTextLifecycle } from './textLifecycle';
 export { useFlowSwitchLifecycle } from './flowSwitchLifecycle';
 export { useMergeFlowLifecycle } from './mergeFlowLifecycle';
 export { useDataPoolLifecycle } from './dataPoolLifecycle';
+export { useGrammarLifecycle } from './useGrammarLifecycle';
 
 export { standardInOut, outputOnly, inputOnly, withBidirectional, flowSwitchHandles } from './handleHelpers';
 
 export { ContentTable, DataPoolContent, ImageGrid } from './components';
+

@@ -28,7 +28,7 @@ import {
   flowSwitchHandles,
   useCodeBoxLifecycle,
   useDataExportLifecycle,
-  useVegaLifecycle,
+  useGrammarLifecycle,
   useUtkLifecycle,
   useTableLifecycle,
   useImageLifecycle,
@@ -264,7 +264,7 @@ registerNode({
     inputIconType: '1',
     outputIconType: '1',
     showTemplateModal: true,
-    useLifecycle: useVegaLifecycle,
+    useLifecycle: useGrammarLifecycle,
   },
 });
 
