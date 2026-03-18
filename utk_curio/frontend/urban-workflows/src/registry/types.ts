@@ -117,7 +117,7 @@ export interface LifecycleResult {
  * 4. Must not call `boxState.setSendCodeCallback` directly — return
  *    `setSendCodeCallbackOverride` instead so UniversalBox can wire it.
  */
-export type BoxLifecycleHook = (data: BoxLifecycleData, boxState: UseBoxStateReturn) => LifecycleResult;
+export type BoxLifecycleHook = (data: BoxLifecycleData, boxState: UseBoxStateReturn, descriptor: BoxDescriptor) => LifecycleResult;
 
 /* ── Full adapter for a box type ───────────────────────────────────── */
 

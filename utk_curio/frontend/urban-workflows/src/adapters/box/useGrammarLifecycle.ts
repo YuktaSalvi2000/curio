@@ -1,28 +1,22 @@
-/**
- * useGrammarLifecycle
- *
- * Generic lifecycle hook for grammar-based visualization nodes.
- * Replaces grammar-specific lifecycle branching at the box level.
- *
- * Responsibilities:
- * 1. Read grammarId from descriptor
- * 2. Build VisualizationIR
- * 3. Call integration layer
- * 4. Handle generic execution state
- */
-
 import { BoxLifecycleHook } from '../../registry/types';
-import { getNodeDescriptor } from '../../registry/nodeRegistry';
 import { VisualizationIR } from '../../integration_layer/ir';
 import { executeVisualization } from '../../integration_layer/visualizationIntegrationLayer';
+import { prepareGrammarSpec, setGrammarError } from '../../utils/grammarExecution';
 
-export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState) => {
+export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState, descriptor) => {
   const applyGrammar = async (spec: string) => {
     try {
-      const descriptor = getNodeDescriptor(data.nodeType);
+      const grammarId = descriptor.grammarId;
 
-      if (!descriptor?.grammarId) {
+      if (!grammarId) {
         throw new Error(`No grammarId configured for node type: ${data.nodeType}`);
+      }
+
+      const prepared = prepareGrammarSpec(spec, grammarId);
+
+      if (!prepared.ok) {
+        setGrammarError(boxState.setOutput, prepared.message, true);
+        return;
       }
 
       const outputId = descriptor.adapter?.editor?.outputId?.(data.nodeId);
@@ -34,8 +28,8 @@ export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState) => {
       }
 
       const ir: VisualizationIR = {
-        grammarId: descriptor.grammarId,
-        spec,
+        grammarId,
+        spec: JSON.stringify(prepared.parsedSpec),
         data: data.input,
         nodeId: data.nodeId,
         containerId: outputId,
@@ -60,15 +54,13 @@ export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState) => {
         outputType: '',
       });
 
-      // Preserve current Curio behavior:
-      // visualization boxes forward their input as output
       data.outputCallback(data.nodeId, data.input);
     } catch (error: any) {
-      boxState.setOutput({
-        code: 'error',
-        content: error?.message || 'Visualization execution failed',
-        outputType: '',
-      });
+      setGrammarError(
+        boxState.setOutput,
+        error?.message || 'Visualization execution failed',
+        true
+      );
     }
   };
 
@@ -76,4 +68,3 @@ export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState) => {
     applyGrammar,
   };
 };
-

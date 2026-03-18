@@ -17,7 +17,7 @@ function UniversalBox({ data, isConnectable }: { data: any; isConnectable: boole
   const { adapter } = descriptor;
 
   const boxState = useBoxState(data, descriptor.id);
-  const lifecycle = adapter.useLifecycle(data, boxState);
+  const lifecycle = adapter.useLifecycle(data, boxState, descriptor);
   const edges = useEdges();
 
   const sendCode = lifecycle.sendCodeOverride ?? boxState.sendCode;
