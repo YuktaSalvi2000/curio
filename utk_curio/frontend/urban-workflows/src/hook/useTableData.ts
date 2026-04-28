@@ -549,7 +549,9 @@ const useTableData = ({ data }: { data: INodeData }) => {
         // Multiple inputs: wrap as outputs
         output = { data: tabd, dataType: "outputs" };
       }
-      data.outputCallback(data.nodeId, output)
+      if (data.outputCallback) {
+        data.outputCallback(data.nodeId, output);
+      }
 
       setTabData(tabd);
       // Local output (string)

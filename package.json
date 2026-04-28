@@ -1,5 +1,14 @@
 {
   "devDependencies": {
-    "minimatch": "^10.0.3"
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.6.0",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^30.3.0",
+    "jest-canvas-mock": "^2.5.2",
+    "jest-environment-jsdom": "^30.3.0",
+    "minimatch": "^10.0.3",
+    "ts-jest": "^29.4.9",
+    "vega": "^6.2.0",
+    "vega-lite": "^6.4.2"
   }
 }

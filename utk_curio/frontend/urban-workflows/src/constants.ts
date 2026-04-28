@@ -7,6 +7,8 @@ export enum BoxType {
   FLOW_SWITCH = "FLOW_SWITCH",
   VIS_UTK = "VIS_UTK",
   VIS_VEGA = "VIS_VEGA",
+  // For testing grammar independence - not tied to Vega or UTK
+  VIS_MOCK_GRAMMAR = 'VIS_MOCK_GRAMMAR',
   VIS_TABLE = "VIS_TABLE",
   VIS_TEXT = "VIS_TEXT",
   VIS_IMAGE = "VIS_IMAGE",

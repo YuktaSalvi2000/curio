@@ -9,7 +9,9 @@ import { InputIcon } from './edges/InputIcon';
 import { getNodeDescriptor } from '../registry/nodeRegistry';
 import { useBoxState } from '../hook/useBoxState';
 import { HandleDef } from '../registry/types';
+// @ts-expect-error
 import './Box.css';
+// @ts-expect-error
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 function UniversalBox({ data, isConnectable }: { data: any; isConnectable: boolean }) {
@@ -61,9 +63,14 @@ function UniversalBox({ data, isConnectable }: { data: any; isConnectable: boole
         noContent={adapter.container.noContent}
         boxWidth={adapter.container.boxWidth}
         boxHeight={adapter.container.boxHeight}
-        styles={adapter.container.styles}
+        styles={adapter.container.styles as any}
         disablePlay={adapter.container.disablePlay}
-        output={output}
+        output={output && {
+  ...output,
+  content: typeof output.content === 'string'
+    ? output.content
+    : JSON.stringify(output.content),
+}}
         templateData={boxState.templateData}
         code={boxState.code}
         user={boxState.user}
@@ -74,7 +81,7 @@ function UniversalBox({ data, isConnectable }: { data: any; isConnectable: boole
         setTemplateConfig={adapter.showTemplateModal ? boxState.setTemplateConfig : undefined}
         promptDescription={boxState.promptDescription}
       >
-        {adapter.inputIconType && <InputIcon type={adapter.inputIconType} />}
+        {adapter.inputIconType && <InputIcon type={(adapter.inputIconType ?? '1') as '1' | '2' | 'N'} />}
 
         <DescriptionModal
           nodeId={data.nodeId}
@@ -121,7 +128,7 @@ function UniversalBox({ data, isConnectable }: { data: any; isConnectable: boole
           />
         )}
 
-        {adapter.outputIconType && <OutputIcon type={adapter.outputIconType} />}
+        {adapter.outputIconType && <OutputIcon type={(adapter.outputIconType ?? '1') as '1' | '2' | 'N'} />}
       </BoxContainer>
     </>
   );

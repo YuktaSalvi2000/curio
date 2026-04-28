@@ -8,6 +8,8 @@
  * to obtain the correct adapter at runtime.
  */
 
+import { VisualizationRenderOptions } from '../integration_layer/ir';
+
 export interface GrammarAdapter {
   grammarId: string;
 
@@ -19,7 +21,7 @@ export interface GrammarAdapter {
     container: HTMLElement,
     spec: unknown,
     data?: unknown,
-    options?: { interactions?: unknown; resolutionMode?: string }
+    options?: VisualizationRenderOptions
   ): void | Promise<void>;
 
   /** Return a minimal default spec for this grammar. */

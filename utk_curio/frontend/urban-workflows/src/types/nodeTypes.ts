@@ -26,7 +26,7 @@ export interface ICodeData {
  */
 export interface INodeData {
   nodeId: string;
-  input?: string;
+  input?: any;
   defaultCode?: string;
   pythonInterpreter?: PythonInterpreter;
   outputCallback?: (nodeId: string, output: string) => void;

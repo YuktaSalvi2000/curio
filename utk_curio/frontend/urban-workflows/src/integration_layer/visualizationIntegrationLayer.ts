@@ -13,7 +13,6 @@ function resolveContainer(ir: VisualizationIR): HTMLElement {
   }
 
   const el = document.getElementById(ir.containerId);
-
   if (!el) {
     throw new Error(
       `Visualization container not found: ${ir.containerId} (nodeId=${ir.nodeId}, grammarId=${ir.grammarId})`
@@ -39,17 +38,25 @@ export async function executeVisualization(
       throw new Error(`Invalid visualization spec for grammarId: ${ir.grammarId}`);
     }
 
-    const output = await adapter.render(
+    // Forward nodeId into options so adapters can use it for provenance
+    // logging, interaction wiring, and internal handle storage —
+    // without the adapter needing to return anything through the interface.
+    await adapter.render(
       container,
       ir.spec,
       ir.data,
-      ir.options
+      {
+        ...ir.options,
+        nodeId: ir.nodeId,
+      }
     );
 
     return {
       success: true,
       grammarId: ir.grammarId,
-      output,
+      // Callers that need the live handle use getVegaLiteHandle(ir.nodeId)
+      // from vegaLiteAdapter directly — no output threading needed.
+      output: undefined,
     };
   } catch (error: any) {
     return {

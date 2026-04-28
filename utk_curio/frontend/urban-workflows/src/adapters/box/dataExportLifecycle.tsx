@@ -43,8 +43,12 @@ export const useDataExportLifecycle: BoxLifecycleHook = (data, boxState) => {
 
   const downloadData = async () => {
     let filePath = '';
-    if (data.input && typeof data.input === 'object' && data.input.path) {
-      filePath = data.input.path;
+    if (data.input) {
+      if (typeof data.input === 'string') {
+        filePath = data.input;
+      } else if (typeof data.input === 'object' && (data.input as any).path) {
+        filePath = (data.input as any).path;
+      }
     }
     if (!filePath) return;
 

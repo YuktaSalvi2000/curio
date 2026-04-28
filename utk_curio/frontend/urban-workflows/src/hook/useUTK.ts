@@ -15,7 +15,7 @@ export function useUTK({ data, code }: { data: any, code: string }) {
   const [output, setOutput] = useState<ICodeData>({ code: '', content: '' });
   const { workflowNameRef } = useFlowContext();
 
-  const [inputData, setInputData] = useState();
+  const [inputData, setInputData] = useState<string[] | undefined>(undefined);
 
   const [defaultGrammar, setDefaultGrammar] = useState<string>("{}");
 
@@ -52,7 +52,7 @@ export function useUTK({ data, code }: { data: any, code: string }) {
   const [serverlessComponents, setServerlessComponents] = useState<any>([]);
 
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [sendCode, setSendCode] = useState<Function>(undefined);
+  const [sendCode, setSendCode] = useState<Function | undefined>(undefined);
 
   const setSendCodeCallback = (_sendCode: any) => {
     setSendCode(() => (codeArg: string) => {
@@ -392,7 +392,7 @@ export function useUTK({ data, code }: { data: any, code: string }) {
 
     let typesOuput: string[] = [...typesInput];
 
-    let dfIN = [];
+    let dfIN: string[] = [];
     let dfOUT = "";
 
     if (data.input && data.input.data && data.input.data.features) {
@@ -659,7 +659,9 @@ export function useUTK({ data, code }: { data: any, code: string }) {
     setIsProcessing(false);
     // Refresh UTK
     setOutput({code: 'exec', content: ''});
-    sendCode(code)
+    if (sendCode) {
+      sendCode(code);
+    }
 
   };
 

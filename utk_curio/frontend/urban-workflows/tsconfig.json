@@ -1,14 +1,25 @@
 {
   "compilerOptions": {
     "target": "es2021",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+
+    "jsx": "react-jsx",
+
     "allowJs": true,
-    "jsx": "react",
-    "moduleResolution": "node",
-    "outDir": "./dist",
     "strict": true,
+
     "esModuleInterop": true,
     "sourceMap": true,
-    "baseUrl": "src"
+
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    "types": ["node"],
+
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "include": ["src/**/*"]
+  "include": ["src"]
 }
