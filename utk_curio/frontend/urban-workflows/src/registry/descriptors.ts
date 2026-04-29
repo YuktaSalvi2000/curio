@@ -267,7 +267,7 @@ registerNode({
     inputIconType: '1',
     outputIconType: '1',
     showTemplateModal: true,
-    useLifecycle: useGrammarLifecycle,
+    useLifecycle: useVegaLifecycle,
   },
 });
 

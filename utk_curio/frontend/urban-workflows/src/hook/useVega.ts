@@ -11,7 +11,7 @@ import { useFlowContext } from "../providers/FlowProvider";
 // const schema = require('./vega-schema.json');
 const vega = require("vega");
 const lite = require("vega-lite");
-  
+
 export const useVega = ({ data, code }: { data: any; code: string; }) => {
   const [interactions, _setInteractions] = useState<any>({}); // {signal: {type: point/interval, data: }} // if type point data contains list of object ids. If type is interval data is an object where each key is an attribute with intervals or lists
 
@@ -31,8 +31,8 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
   const parseInputData = async (input: any) => {
     let values: any = [];
     let parsedInput = data.input; //JSON.parse(data.input);
-    if (parsedInput == "" || parsedInput == null || parsedInput == undefined) {
-      return [];
+    if (parsedInput == "") {
+      throw new Error("Input data must be an array");
     }
 
     let inputType = parsedInput.dataType; // JSON.parse(data.input)["dataType"];
@@ -366,4 +366,3 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
 
   return { handleCompileGrammar };
 };
-
