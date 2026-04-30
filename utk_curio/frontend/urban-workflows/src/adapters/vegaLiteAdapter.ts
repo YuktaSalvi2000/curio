@@ -1,300 +1,250 @@
-/* 
-=== OPTIMIZATIONS APPLIED (NO FUNCTIONAL CHANGES) ===
+// import { GrammarAdapter, registerGrammarAdapter } from '../registry/grammarAdapter';
+// import { BoxType, VisInteractionType } from "../constants";
+// import { fetchData } from "../services/api";
+// import { parseDataframe, parseGeoDataframe } from "../utils/parsing";
 
-1. Memoized data parsing:
-   - Added getParsedData() with caching via refs
-   - Prevents repeated async parsing/fetching of identical input
+// const vega = require("vega");
+// const lite = require("vega-lite");
 
-2. Removed redundant React state updates:
-   - Directly mutate Vega view instead of setState wrapper
-   - Avoid unnecessary re-renders
+// export const vegaLiteAdapter: GrammarAdapter = {
+//   grammarId: 'vega-lite',
 
-3. Reduced object churn in interactions:
-   - Introduced buildInteractionState helper
-   - Eliminated repeated full object reconstruction logic
+//   validate: (spec) => {
+//     try {
+//       const parsed = typeof spec === 'string' ? JSON.parse(spec) : spec;
+//       return !!parsed;
+//     } catch {
+//       return false;
+//     }
+//   },
 
-4. Debounced backend interaction logging:
-   - Prevents excessive API calls during rapid interactions (e.g. brushing)
+//   render: async (container, spec, data, options) => {
+//     const { nodeId, input, outputCallback, interactionsCallback, stateRef } = options as any;
+//     console.log('vegaLiteAdapter.render called', { 
+//     container, 
+//     spec, 
+//     input: (options as any)?.input,
+//     stateRef: (options as any)?.stateRef,
+//   });
+//     if (!stateRef.current) {
+//       stateRef.current = {
+//         currentView: null,
+//         interactions: {},
+//         resizeObserver: null,
+//         debounceTimer: null,
+//       };
+//     }
 
-5. Added ResizeObserver cleanup:
-   - Prevents memory leaks
+//     const state = stateRef.current;
 
-6. Stabilized async logic with useCallback:
-   - Avoids unnecessary function re-creation and effect triggers
+//     // --- Parse input ---
+//     if (!input || input === "") throw new Error("Input data must be provided");
 
-7. Cached DOM identifiers:
-   - Avoid repeated string concatenation and DOM queries
+//     const parserMap: any = {
+//       dataframe: parseDataframe,
+//       geodataframe: parseGeoDataframe,
+//     };
 
-8. Removed unused imports and dead/commented code:
-   - Improves readability and maintainability
+//     const parser = parserMap[input.dataType];
+//     if (!parser) {
+//       throw new Error(`${input.dataType} is not a valid input type for Vega-Lite`);
+//     }
 
-9. Centralized parsed data reuse:
-   - compileGrammar and processData now share the same cached data source
+//     let values: any;
+//     if (input.path) {
+//       const res = await fetchData(input.path);
+//       values = parser(res.data);
+//     } else {
+//       values = parser(input.data);
+//     }
 
-10. Minor performance improvements:
-   - Reduced Object.keys calls
-   - Avoided repeated JSON/string operations where possible
-*/
+//     // --- Hot reload: if view exists, just update data ---
+//     if (state.currentView) {
+//       const changeset = vega.changeset().remove(() => true).insert(values);
+//       state.currentView.change("data", changeset).runAsync();
+//       return;
+//     }
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { BoxType, VisInteractionType } from "../constants";
-import { useProvenanceContext } from "../providers/ProvenanceProvider";
-import { fetchData } from "../services/api";
-import { formatDate, mapTypes } from "../utils/formatters";
-import { parseDataframe, parseGeoDataframe } from "../utils/parsing";
-import { useFlowContext } from "../providers/FlowProvider";
+//     const specObj = typeof spec === 'string' ? JSON.parse(spec) : { ...(spec as Record<string, unknown>) };
+//     specObj.data = { values, name: "data" };
+//     specObj.height = "container";
+//     specObj.width = "container";
 
-const vega = require("vega");
-const lite = require("vega-lite");
+//     const vegaspec = lite.compile(specObj).spec;
 
-export const useVega = ({ data, code }: { data: any; code: string }) => {
-  const [interactions, _setInteractions] = useState<any>({});
-  const [currentView, setCurrentView] = useState<any>(null);
+//     const view = new vega.View(vega.parse(vegaspec))
+//       .logLevel(vega.Warn)
+//       .renderer("svg")
+//       .initialize(container)
+//       .hover();
 
-  const currentViewRef = useRef<any>(null);
-  const interactionsRef = useRef<any>({});
-  const parsedDataRef = useRef<any>(null);
-  const lastInputRef = useRef<any>(null);
-  const debounceRef = useRef<any>(null);
+//     await view.runAsync();
 
-  const containerId = `vega${data.nodeId}`;
+//     // Adjust padding for vega-bind elements
+//     const parentContainer = container?.parentElement;
+//     if (parentContainer) {
+//        const hasBindings = container.querySelector(".vega-bind") !== null;
+//        parentContainer.style.paddingBottom = hasBindings ? "25px" : "";
+//     }
 
-  const setInteractions = (val: any) => {
-    interactionsRef.current = val;
-    _setInteractions(val);
+//     state.currentView = view;
+
+//     // --- ResizeObserver ---
+//     if (state.resizeObserver) state.resizeObserver.disconnect();
+//     state.resizeObserver = new ResizeObserver(() => {
+//       if (state.currentView) window.dispatchEvent(new Event("resize"));
+//     });
+//     state.resizeObserver.observe(container);
+
+//     // --- Signal listeners ---
+//     const signals = Object.keys(view.getState().signals);
+
+//     for (const signal of signals) {
+//       const parts = signal.split("_");
+//       if (parts[1] !== "modify") continue;
+
+//       const key = parts[0];
+
+//       state.interactions[key] = {
+//         type: VisInteractionType.UNDETERMINED,
+//         data: [],
+//         source: BoxType.VIS_VEGA,
+//       };
+
+//       view.addSignalListener(key, (_: any, value: any) => {
+//         const attrs = Object.keys(value);
+
+//         const buildState = (newEntry: any) => {
+//           const newObj: any = {};
+//           for (const k of Object.keys(state.interactions)) {
+//             newObj[k] = { ...state.interactions[k], priority: 0 };
+//           }
+//           newObj[key] = { ...newEntry, priority: 1, source: BoxType.VIS_VEGA };
+//           state.interactions = newObj;
+//           interactionsCallback?.(newObj, nodeId);
+//         };
+
+//         if (attrs.length === 0) {
+//           const prev = state.interactions[key];
+//           const type = prev?.type ?? VisInteractionType.UNDETERMINED;
+//           buildState({ type, data: type === VisInteractionType.INTERVAL ? {} : [] });
+//         } else if (attrs.includes("_vgsid_")) {
+//           const points = value._vgsid_.map((v: number) => (v - 1) % values.length);
+//           buildState({ type: VisInteractionType.POINT, data: points });
+//         } else {
+//           buildState({ type: VisInteractionType.INTERVAL, data: { ...value } });
+//         }
+
+//         // Debounced backend log
+//         clearTimeout(state.debounceTimer);
+//         state.debounceTimer = setTimeout(() => {
+//           if (state.interactions[key]?.type !== VisInteractionType.UNDETERMINED) {
+//             fetch(`${process.env.BACKEND_URL}/insert_interaction`, {
+//               method: "POST",
+//               headers: { "Content-Type": "application/json" },
+//               body: JSON.stringify({
+//                 data: {
+//                   activity_name: BoxType.VIS_VEGA + "-" + nodeId,
+//                   int_time: new Date().toISOString(),
+//                 },
+//               }),
+//             });
+//           }
+//         }, 300);
+//       });
+//     }
+
+//     outputCallback?.(nodeId, input);
+//   },
+// };
+
+// registerGrammarAdapter(vegaLiteAdapter);
+/**
+ * VegaLiteAdapter: GrammarAdapter implementation for Vega-Lite visualizations.
+ *
+ * Wraps the Vega-Lite compile + Vega View creation logic that was previously
+ * embedded inside useVega / VegaNode. This adapter can be used standalone or
+ * via the grammar adapter registry.
+ */
+
+import { GrammarAdapter, registerGrammarAdapter } from '../registry/grammarAdapter';
+import { parseDataframe, parseGeoDataframe } from '../utils/parsing';
+import { fetchData } from '../services/api';
+
+const vega = require('vega');
+const lite = require('vega-lite');
+
+async function parseInputData(input: any): Promise<any[]> {
+  if (!input || input === '') {
+    throw new Error('Input data must be provided');
+  }
+
+  const inputType = input.dataType;
+  if (inputType !== 'dataframe' && inputType !== 'geodataframe') {
+    throw new Error(`${inputType} is not a valid input type for Vega-Lite`);
+  }
+
+  const parserMap: Record<string, (data: any) => any> = {
+    dataframe: parseDataframe,
+    geodataframe: parseGeoDataframe,
   };
 
-  const getParsedData = useCallback(async () => {
-    if (lastInputRef.current === data.input && parsedDataRef.current) {
-      return parsedDataRef.current;
+  const parser = parserMap[inputType];
+  if (!parser) return [];
+
+  if (input.path) {
+    const fetched = await fetchData(input.path);
+    return parser(fetched.data);
+  }
+  return parser(input.data);
+}
+
+export const vegaLiteAdapter: GrammarAdapter = {
+  grammarId: 'vega-lite',
+
+  validate(spec: unknown): boolean {
+    try {
+      const parsed = typeof spec === 'string' ? JSON.parse(spec) : spec;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+    } catch {
+      return false;
     }
+  },
 
-    let parsedInput = data.input;
-    if (!parsedInput) throw new Error("Input data must be provided");
+  async render(
+    container: HTMLElement,
+    spec: unknown,
+    data?: unknown,
+  ): Promise<void> {
+    const specObj = typeof spec === 'string' ? JSON.parse(spec as string) : { ...spec as any };
+    const inputData = data as any;
 
-    const parserMap = {
-      dataframe: parseDataframe,
-      geodataframe: parseGeoDataframe,
-    };
+    const values = await parseInputData(inputData);
+    specObj.data = { values, name: 'data' };
+    specObj.height = 'container';
+    specObj.width = 'container';
 
-    const parser = parserMap[parsedInput.dataType as keyof typeof parserMap];
-    if (!parser) {
-      throw new Error(`${parsedInput.dataType} is not valid for Vega-Lite`);
-    }
-
-    let values;
-    if (parsedInput.path) {
-      const res = await fetchData(parsedInput.path);
-      values = parser(res.data);
-    } else {
-      values = parser(parsedInput.data);
-    }
-
-    parsedDataRef.current = values;
-    lastInputRef.current = data.input;
-
-    return values;
-  }, [data.input]);
-
-  const processData = useCallback(async () => {
-    if (!currentViewRef.current) return;
-
-    const values = await getParsedData();
-
-    const changeset = vega
-      .changeset()
-      .remove(() => true)
-      .insert(values);
-
-    currentViewRef.current.change("data", changeset).runAsync();
-  }, [getParsedData]);
-
-  useEffect(() => {
-    processData().catch((e) => alert(e.message));
-  }, [data.input, processData]);
-
-  useEffect(() => {
-    const ro = new ResizeObserver(() => {
-      if (currentViewRef.current) {
-        window.dispatchEvent(new Event("resize"));
-      }
-    });
-
-    const el = document.getElementById(containerId);
-    if (el) ro.observe(el);
-
-    return () => ro.disconnect();
-  }, [containerId]);
-
-  const buildInteractionState = (base: any, key: string, newValue: any) => {
-    const result: any = {};
-
-    for (const k of Object.keys(base)) {
-      result[k] = { ...base[k], priority: 0 };
-    }
-
-    result[key] = {
-      ...newValue,
-      priority: 1,
-      source: BoxType.VIS_VEGA,
-    };
-
-    return result;
-  };
-
-  useEffect(() => {
-    clearTimeout(debounceRef.current);
-
-    debounceRef.current = setTimeout(() => {
-      if (interactionsRef.current.highlight?.type !== "UNDETERMINED") {
-        fetch(`${process.env.BACKEND_URL}/insert_interaction`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            data: {
-              activity_name: BoxType.VIS_VEGA + "-" + data.nodeId,
-              int_time: formatDate(new Date()),
-            },
-          }),
-        });
-      }
-    }, 300);
-
-    return () => clearTimeout(debounceRef.current);
-  }, [interactions]);
-
-  useEffect(() => {
-    data.interactionsCallback(interactions, data.nodeId);
-  }, [interactions]);
-
-  const { workflowNameRef } = useFlowContext();
-  const { boxExecProv } = useProvenanceContext();
-
-  const compileGrammar = async (specObj: any) => {
-    const values = await getParsedData();
-
-    specObj.data = { values, name: "data" };
-    specObj.height = "container";
-    specObj.width = "container";
-
-    const vegaspec = lite.compile(specObj).spec;
-
-    const view = new vega.View(vega.parse(vegaspec))
+    const vegaSpec = lite.compile(specObj).spec;
+    const view = new vega.View(vega.parse(vegaSpec))
       .logLevel(vega.Warn)
-      .renderer("svg")
-      .initialize(`#${containerId}`)
+      .renderer('svg')
+      .initialize(container)
       .hover();
 
     await view.runAsync();
+    return view;
+  },
 
-    const container = document.getElementById(containerId);
-    const parent = container?.parentElement;
-
-    if (parent) {
-      const hasBindings = container?.querySelector(".vega-bind");
-      parent.style.paddingBottom = hasBindings ? "25px" : "";
-    }
-
-    currentViewRef.current = view;
-    setCurrentView(view);
-
-    const signals = Object.keys(view.getState().signals);
-
-    for (const signal of signals) {
-      const parts = signal.split("_");
-
-      if (parts[1] !== "modify") continue;
-
-      const key = parts[0];
-
-      setInteractions({
-        ...interactionsRef.current,
-        [key]: {
-          type: VisInteractionType.UNDETERMINED,
-          data: [],
-          source: BoxType.VIS_VEGA,
-        },
-      });
-
-      view.addSignalListener(key, (_: any, value: any) => {
-        const attrs = Object.keys(value);
-
-        if (attrs.length === 0) {
-          const prev = interactionsRef.current[key];
-          const type = prev?.type ?? VisInteractionType.UNDETERMINED;
-
-          setInteractions(
-            buildInteractionState(interactionsRef.current, key, {
-              type,
-              data: type === VisInteractionType.INTERVAL ? {} : [],
-            })
-          );
-        } else if (attrs.includes("_vgsid_")) {
-          const points = value._vgsid_.map(
-            (v: number) => (v - 1) % values.length
-          );
-
-          setInteractions(
-            buildInteractionState(interactionsRef.current, key, {
-              type: VisInteractionType.POINT,
-              data: points,
-            })
-          );
-        } else {
-          setInteractions(
-            buildInteractionState(interactionsRef.current, key, {
-              type: VisInteractionType.INTERVAL,
-              data: { ...value },
-            })
-          );
-        }
-      });
-    }
-
-    data.outputCallback(data.nodeId, data.input);
-  };
-
-  const handleCompileGrammar = async (spec: string) => {
-    const startTime = formatDate(new Date());
-
-    await compileGrammar(JSON.parse(spec));
-
-    const endTime = formatDate(new Date());
-
-    const typesInput = data.input ? data.input.dataType : [];
-    const typesOutput = [...typesInput];
-
-    const dfStringIN = data.input
-      ? JSON.stringify(data.input.data)
-      : "";
-    const dfStringOUT = data.output
-      ? JSON.stringify(data.output.data)
-      : "";
-
-    boxExecProv(
-      startTime,
-      endTime,
-      workflowNameRef.current,
-      BoxType.VIS_VEGA + "-" + data.nodeId,
-      mapTypes(typesInput),
-      mapTypes(typesOutput),
-      code,
-      dfStringIN,
-      dfStringOUT
-    );
-
-    await fetch(`${process.env.BACKEND_URL}/insert_visualization`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+  getDefaultSpec(): unknown {
+    return {
+      $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+      mark: 'point',
+      encoding: {
+        x: { field: 'x', type: 'quantitative' },
+        y: { field: 'y', type: 'quantitative' },
       },
-      body: JSON.stringify({
-        data: {
-          activity_name: BoxType.VIS_VEGA + "-" + data.nodeId,
-        },
-      }),
-    });
-  };
-
-  return { handleCompileGrammar };
+    };
+  },
 };
+
+registerGrammarAdapter(vegaLiteAdapter);

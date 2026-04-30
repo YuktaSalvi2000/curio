@@ -9,6 +9,7 @@ export enum BoxType {
   VIS_VEGA = "VIS_VEGA",
   // For testing grammar independence - not tied to Vega or UTK
   VIS_MOCK_GRAMMAR = 'VIS_MOCK_GRAMMAR',
+  VIS_D3 = "VIS_D3",
   VIS_TABLE = "VIS_TABLE",
   VIS_TEXT = "VIS_TEXT",
   VIS_IMAGE = "VIS_IMAGE",

@@ -17,6 +17,7 @@ import {
   faFont,
   faCube,
   faChartLine,
+  faChartBar,
   faCopy,
 } from '@fortawesome/free-solid-svg-icons';
 
@@ -267,7 +268,7 @@ registerNode({
     inputIconType: '1',
     outputIconType: '1',
     showTemplateModal: true,
-    useLifecycle: useVegaLifecycle,
+    useLifecycle: useGrammarLifecycle,
   },
 });
 
@@ -290,7 +291,7 @@ registerNode({
   tutorialId: 'step-utk',
   adapter: {
     handles: withBidirectional(standardInOut()),
-    editor: { code: false, grammar: true, widgets: true, outputId: (nodeId) => 'utk' + nodeId + 'outer' },
+    editor: { code: false, grammar: true, widgets: true, outputId: (nodeId) => 'utk' + nodeId},
     container: { handleType: 'in/out', disablePlay: false },
     inputIconType: 'N',
     outputIconType: 'N',
@@ -332,6 +333,41 @@ registerNode({
     useLifecycle: useGrammarLifecycle,
   },
 });
+
+registerNode({
+  id: BoxType.VIS_D3,
+  category: 'vis_grammar',
+  label: 'D3',
+  icon: faChartLine,
+  inputPorts: [{ types: [SupportedType.DATAFRAME], cardinality: '1' }],
+  outputPorts: [{ types: [SupportedType.DATAFRAME], cardinality: '1' }],
+  editor: 'grammar',
+  grammarId: 'd3',
+  inPalette: true,
+  paletteOrder: 8,
+  description: 'The D3 box is responsible for custom JavaScript-based visualizations.',
+  hasCode: false,
+  hasWidgets: true,
+  hasGrammar: true,
+  hasProvenance: true,
+  tutorialId: 'step-d3',
+  adapter: {
+    handles: withBidirectional(standardInOut()),
+    editor: {
+      code: false,
+      grammar: true,
+      widgets: true,
+      outputId: (nodeId) => 'd3' + nodeId,
+    },
+    container: { handleType: 'in/out' },
+    inputIconType: '1',
+    outputIconType: '1',
+    showTemplateModal: true,
+    useLifecycle: useGrammarLifecycle,
+  },
+});
+
+
 
 // ── Simple visualization boxes ──────────────────────────────────────────
 
