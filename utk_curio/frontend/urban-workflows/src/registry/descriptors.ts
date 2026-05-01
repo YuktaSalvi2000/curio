@@ -19,6 +19,7 @@ import {
   faChartLine,
   faChartBar,
   faCopy,
+  faCodeBranch,
 } from '@fortawesome/free-solid-svg-icons';
 
 import { registerNode } from './nodeRegistry';
@@ -41,6 +42,7 @@ import {
   useDataPoolLifecycle,
   useVegaLifecycle,
 } from '../adapters/box';
+import { faAreaChart } from '@fortawesome/free-solid-svg-icons/faAreaChart';
 
 const ALL_TYPES = [
   SupportedType.DATAFRAME,
@@ -300,45 +302,11 @@ registerNode({
   },
 });
 
-// This is a test node used to verify that the system can support new grammar adapters that do not rely on Vega-Lite or UTK specific structures, demonstrating the generic nature of the visualization contract and execution flow.
-registerNode({
-  id: BoxType.VIS_MOCK_GRAMMAR,
-  category: 'vis_grammar',
-  label: 'Mock Grammar',
-  icon: faCube, // or any placeholder icon
-  inputPorts: [{ types: [SupportedType.DATAFRAME], cardinality: '1' }],
-  outputPorts: [{ types: [SupportedType.DATAFRAME], cardinality: '1' }],
-  editor: 'grammar',
-  grammarId: 'mock-grammar',
-  inPalette: false, 
-  paletteOrder: 10,
-  description: 'A mock grammar node used to test generic grammar integration.',
-  hasCode: false,
-  hasWidgets: true,
-  hasGrammar: true,
-  hasProvenance: false,
-  tutorialId: 'step-mock-grammar',
-  adapter: {
-    handles: withBidirectional(standardInOut()),
-    editor: {
-      code: false,
-      grammar: true,
-      widgets: true,
-      outputId: (nodeId) => 'mock' + nodeId,
-    },
-    container: { handleType: 'in/out', disablePlay: false },
-    inputIconType: '1',
-    outputIconType: '1',
-    showTemplateModal: false,
-    useLifecycle: useGrammarLifecycle,
-  },
-});
-
 registerNode({
   id: BoxType.VIS_D3,
   category: 'vis_grammar',
   label: 'D3',
-  icon: faChartLine,
+  icon: faAreaChart,
   inputPorts: [{ types: [SupportedType.DATAFRAME], cardinality: '1' }],
   outputPorts: [{ types: [SupportedType.DATAFRAME], cardinality: '1' }],
   editor: 'grammar',
@@ -362,7 +330,7 @@ registerNode({
     container: { handleType: 'in/out' },
     inputIconType: '1',
     outputIconType: '1',
-    showTemplateModal: true,
+    showTemplateModal: false,
     useLifecycle: useGrammarLifecycle,
   },
 });

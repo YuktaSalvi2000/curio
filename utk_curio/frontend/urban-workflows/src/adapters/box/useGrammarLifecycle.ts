@@ -16,7 +16,7 @@ export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState) => {
   const stateRef = useRef<any>(null);
 
   const applyGrammar = async (spec: string) => {
-    const start = performance.now(); // ⬅️ START TIMER
+    const start = performance.now(); 
     metrics.startTime = start;
     try {
       console.log('applyGrammar called', { spec, nodeType: data.nodeType });
@@ -36,7 +36,7 @@ export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState) => {
       }
 
       metrics.inputSize = JSON.stringify(data.input || {}).length;
-
+      
 
       const ir: VisualizationIR = {
         grammarId: descriptor.grammarId,
@@ -51,6 +51,8 @@ export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState) => {
           stateRef,
         },
       };
+
+      console.log('Constructed VisualizationIR', ir);
 
       boxState.setOutput({ code: 'exec', content: '', outputType: '' });
 

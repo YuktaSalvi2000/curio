@@ -38,6 +38,7 @@ inputTypesSupported = {
     "FLOW_SWITCH": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"],
     "VIS_UTK": ["GEODATAFRAME"],
     "VIS_VEGA": ["DATAFRAME"],
+    "VIS_D3": ["DATAFRAME", "JSON"],   
     "VIS_TABLE": ["DATAFRAME", "GEODATAFRAME"],
     "VIS_TEXT": ["VALUE"],
     "VIS_IMAGE": ["LIST"],
@@ -55,6 +56,7 @@ outputTypesSupported = {
     "FLOW_SWITCH": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"],
     "VIS_UTK": ["GEODATAFRAME"],
     "VIS_VEGA": ["DATAFRAME"],
+    "VIS_D3": ["DATAFRAME", "JSON"],
     "VIS_TABLE": ["DATAFRAME", "GEODATAFRAME"],
     "VIS_TEXT": ["VALUE"],
     "VIS_IMAGE": ["LIST"],
@@ -78,7 +80,9 @@ TYPE_MAP = {
     "data_loading": "DATA_LOADING",
     "data_transformation": "DATA_TRANSFORMATION",
     "utk": "VIS_UTK",
-    "vega_lite": "VIS_VEGA"
+    "vega_lite": "VIS_VEGA",
+    "d3": "VIS_D3",
+
 }
 
 FOLDER_MAP = {
@@ -88,7 +92,8 @@ FOLDER_MAP = {
     "DATA_LOADING": "data_loading",
     "DATA_TRANSFORMATION": "data_transformation",
     "VIS_UTK": "utk",
-    "VIS_VEGA": "vega_lite"
+    "VIS_VEGA": "vega_lite",
+    "VIS_D3": "d3", 
 }
 
 def get_db_path():

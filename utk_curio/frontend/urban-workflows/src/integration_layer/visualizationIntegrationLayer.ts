@@ -133,7 +133,6 @@
 
 import { getAllGrammarAdapters, getGrammarAdapter } from '../registry/grammarAdapter';
 import { VisualizationIR, VisualizationRenderResult } from './ir';
-import { computeFingerprint } from './metrics';
 console.log(
   'Registered adapters:',
   getAllGrammarAdapters().map(a => a.grammarId)
@@ -178,6 +177,7 @@ export async function executeVisualization(
     console.log('container input:', resolvedInput);
 
     const adapter = getGrammarAdapter(ir.grammarId);
+    console.log('Adapter found for grammarId:', ir.grammarId, adapter);
     const container = await resolveContainer(ir.container ?? ir.containerId);
 
     if (!ir.options?.skipValidation && adapter.validate) {
@@ -186,7 +186,7 @@ export async function executeVisualization(
       }
     }
 
-    const fingerprint = computeFingerprint(await adapter.render(
+    await adapter.render(
       container,
       ir.spec,
       ir.data,
@@ -194,9 +194,7 @@ export async function executeVisualization(
         ...ir.options,
         nodeId: ir.nodeId, // always forward nodeId into options
       }
-    ));
-
-    console.log("📊 FINGERPRINT", fingerprint);
+    );
 
     return {
       success: true,

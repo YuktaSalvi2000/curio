@@ -4,9 +4,7 @@
 
 This directory contains unit tests that verify the Curio visualization framework supports **grammar-agnostic visualization execution**, proving that:
 
-1. New grammar plugins can be added without modifying core code
-2. The execution contract is truly generic and backend-independent
-3. Existing Vega-Lite and UTK grammars work identically under the new architecture
+1. Existing Vega-Lite and UTK grammars work identically under the new architecture
 4. Invalid requests are properly rejected at the integration layer
 
 ---

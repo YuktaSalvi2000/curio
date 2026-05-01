@@ -151,7 +151,7 @@ export const utkAdapter: GrammarAdapter = {
     mainDiv,
     json.layers,
     json.joinedJsons,
-    components,
+    components as any,
     []
   );
     console.log('GrammarInterpreter created successfully');

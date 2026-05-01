@@ -31,11 +31,12 @@ frontpath = './utk-frontend/'
 address = 'localhost'
 port = 5001
 
-@app.after_request
-def add_cors_headers(response):
+@app.route('/<path:path>', methods=['OPTIONS'])
+def options_handler(path):
+    response = Flask.make_response(app, '')
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
 
 @app.route('/')

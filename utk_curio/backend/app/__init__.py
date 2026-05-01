@@ -2,6 +2,7 @@ from flask import Flask, request, current_app
 import os
 import logging
 from logging.handlers import RotatingFileHandler
+from flask_cors import CORS
 
 from utk_curio.backend.config import Config as config_class
 from utk_curio.backend.extensions import db, migrate
@@ -15,6 +16,7 @@ def create_app(config_class=config_class):
 
     # Flask app
     app = Flask(__name__)
+    CORS(app)
     app.config.from_object(config_class)
 
     db.init_app(app)
