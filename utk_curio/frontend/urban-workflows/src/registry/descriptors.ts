@@ -1,26 +1,33 @@
+<<<<<<< HEAD
 /* Modified for Mock gramamr plugin testing - not part of actual registry descriptors */
 
 import { BoxType, SupportedType } from '../constants';
+=======
+import { NodeType, SupportedType } from '../constants';
+>>>>>>> upstream/main
 import { Position } from 'reactflow';
 import {
   faMagnifyingGlassChart,
   faSquareRootVariable,
-  faBroom,
   faUpload,
   faDownload,
   faServer,
   faDatabase,
   faRepeat,
   faCodeMerge,
-  faImage,
   faTable,
-  faFont,
   faCube,
   faChartLine,
   faChartBar,
   faCopy,
+<<<<<<< HEAD
   faCodeBranch,
+=======
+  faRectangleList,
+  faMap,
+>>>>>>> upstream/main
 } from '@fortawesome/free-solid-svg-icons';
+import { faJs } from '@fortawesome/free-brands-svg-icons';
 
 import { registerNode } from './nodeRegistry';
 
@@ -30,19 +37,24 @@ import {
   inputOnly,
   withBidirectional,
   flowSwitchHandles,
-  useCodeBoxLifecycle,
+  useCodeNodeLifecycle,
   useDataExportLifecycle,
   useGrammarLifecycle,
   useUtkLifecycle,
-  useTableLifecycle,
-  useImageLifecycle,
-  useTextLifecycle,
+  useSimpleVisLifecycle,
   useFlowSwitchLifecycle,
   useMergeFlowLifecycle,
   useDataPoolLifecycle,
+<<<<<<< HEAD
   useVegaLifecycle,
 } from '../adapters/box';
 import { faAreaChart } from '@fortawesome/free-solid-svg-icons/faAreaChart';
+=======
+  useDataSummaryLifecycle,
+  useAutkMapLifecycle,
+  useAutkPlotLifecycle,
+} from '../adapters/node';
+>>>>>>> upstream/main
 
 const ALL_TYPES = [
   SupportedType.DATAFRAME,
@@ -64,10 +76,10 @@ const TABULAR_DATA = [
   SupportedType.GEODATAFRAME,
 ];
 
-// ── Data boxes ──────────────────────────────────────────────────────────
+// ── Data nodes ──────────────────────────────────────────────────────────
 
 registerNode({
-  id: BoxType.DATA_LOADING,
+  id: NodeType.DATA_LOADING,
   category: 'data',
   label: 'Data Loading',
   icon: faUpload,
@@ -76,7 +88,7 @@ registerNode({
   editor: 'code',
   inPalette: true,
   paletteOrder: 0,
-  description: 'The Data Loading box is responsible for getting data from the outside world into the workflow.',
+  description: 'The Data Loading box is responsible for getting data from the outside world into the dataflow.',
   hasCode: true,
   hasWidgets: true,
   hasGrammar: false,
@@ -87,12 +99,12 @@ registerNode({
     container: { handleType: 'out', disablePlay: false },
     outputIconType: 'N',
     showTemplateModal: true,
-    useLifecycle: useCodeBoxLifecycle,
+    useLifecycle: useCodeNodeLifecycle,
   },
 });
 
 registerNode({
-  id: BoxType.DATA_EXPORT,
+  id: NodeType.DATA_EXPORT,
   category: 'data',
   label: 'Data Export',
   icon: faDownload,
@@ -101,7 +113,7 @@ registerNode({
   editor: 'code',
   inPalette: true,
   paletteOrder: 1,
-  description: 'The Export box is responsible for getting data from the workflow to the outside world.',
+  description: 'The Export box is responsible for getting data from the dataflow to the outside world.',
   hasCode: true,
   hasWidgets: true,
   hasGrammar: false,
@@ -115,34 +127,9 @@ registerNode({
   },
 });
 
-registerNode({
-  id: BoxType.DATA_CLEANING,
-  category: 'data',
-  label: 'Data Cleaning',
-  icon: faBroom,
-  inputPorts: [{ types: SPATIAL_DATA, cardinality: '1' }],
-  outputPorts: [{ types: SPATIAL_DATA, cardinality: '1' }],
-  editor: 'code',
-  inPalette: true,
-  paletteOrder: 4,
-  description: 'The Data Cleaning box is reponsible for performing cleaning operations on the data.',
-  hasCode: true,
-  hasWidgets: true,
-  hasGrammar: false,
-  tutorialId: 'step-cleaning',
-  adapter: {
-    handles: standardInOut(),
-    editor: { code: true, grammar: false, widgets: true, disableWidgets: true },
-    container: { handleType: 'in/out' },
-    inputIconType: '1',
-    outputIconType: '1',
-    showTemplateModal: true,
-    useLifecycle: useCodeBoxLifecycle,
-  },
-});
 
 registerNode({
-  id: BoxType.DATA_TRANSFORMATION,
+  id: NodeType.DATA_TRANSFORMATION,
   category: 'data',
   label: 'Data Transformation',
   icon: faDatabase,
@@ -163,12 +150,12 @@ registerNode({
     inputIconType: '2',
     outputIconType: '2',
     showTemplateModal: true,
-    useLifecycle: useCodeBoxLifecycle,
+    useLifecycle: useCodeNodeLifecycle,
   },
 });
 
 registerNode({
-  id: BoxType.DATA_POOL,
+  id: NodeType.DATA_POOL,
   category: 'data',
   label: 'Data Pool',
   icon: faServer,
@@ -193,10 +180,10 @@ registerNode({
   },
 });
 
-// ── Computation boxes ───────────────────────────────────────────────────
+// ── Computation nodes ───────────────────────────────────────────────────
 
 registerNode({
-  id: BoxType.COMPUTATION_ANALYSIS,
+  id: NodeType.COMPUTATION_ANALYSIS,
   category: 'computation',
   label: 'Computation Analysis',
   icon: faMagnifyingGlassChart,
@@ -217,12 +204,37 @@ registerNode({
     inputIconType: 'N',
     outputIconType: 'N',
     showTemplateModal: true,
-    useLifecycle: useCodeBoxLifecycle,
+    useLifecycle: useCodeNodeLifecycle,
   },
 });
 
 registerNode({
-  id: BoxType.CONSTANTS,
+  id: NodeType.DATA_SUMMARY,
+  category: 'computation',
+  label: 'Data Summary',
+  icon: faRectangleList,
+  inputPorts: [{ types: TABULAR_DATA, cardinality: '1' }],
+  outputPorts: [{ types: [SupportedType.JSON], cardinality: '1' }],
+  editor: 'code',
+  inPalette: true,
+  paletteOrder: 10,
+  description: 'The Data Summary node computes descriptive statistics and schema information (shape, dtypes, missing values, describe) for a DataFrame.',
+  hasCode: true,
+  hasWidgets: false,
+  hasGrammar: false,
+  adapter: {
+    handles: standardInOut(),
+    editor: { code: true, grammar: false, widgets: true },
+    container: { handleType: 'in/out' },
+    inputIconType: '1',
+    outputIconType: '1',
+    showTemplateModal: true,
+    useLifecycle: useDataSummaryLifecycle,
+  },
+});
+
+registerNode({
+  id: NodeType.CONSTANTS,
   category: 'computation',
   label: 'Constants',
   icon: faSquareRootVariable,
@@ -240,14 +252,39 @@ registerNode({
     container: { handleType: 'in/out' },
     outputIconType: '1',
     showTemplateModal: true,
-    useLifecycle: useCodeBoxLifecycle,
+    useLifecycle: useCodeNodeLifecycle,
   },
 });
 
-// ── Grammar visualization boxes ─────────────────────────────────────────
+registerNode({
+  id: NodeType.JS_COMPUTATION,
+  category: 'computation',
+  label: 'JS Computation',
+  icon: faJs,
+  inputPorts: [{ types: ALL_TYPES, cardinality: '[0,1]' }],
+  outputPorts: [{ types: ALL_TYPES, cardinality: '[0,1]' }],
+  editor: 'code',
+  inPalette: true,
+  paletteOrder: 11,
+  description: 'Run JavaScript via Node.js. Input from the previous node is available as `arg`. Use `return` to pass output downstream.',
+  hasCode: true,
+  hasWidgets: false,
+  hasGrammar: false,
+  adapter: {
+    handles: standardInOut(),
+    editor: { code: true, grammar: false, widgets: true },
+    container: { handleType: 'in/out', disablePlay: false },
+    inputIconType: '1',
+    outputIconType: '1',
+    showTemplateModal: false,
+    useLifecycle: useCodeNodeLifecycle,
+  },
+});
+
+// ── Grammar visualization nodes ─────────────────────────────────────────
 
 registerNode({
-  id: BoxType.VIS_VEGA,
+  id: NodeType.VIS_VEGA,
   category: 'vis_grammar',
   label: 'Vega-Lite',
   icon: faChartLine,
@@ -275,7 +312,7 @@ registerNode({
 });
 
 registerNode({
-  id: BoxType.VIS_UTK,
+  id: NodeType.VIS_UTK,
   category: 'vis_grammar',
   label: 'UTK',
   icon: faCube,
@@ -340,64 +377,16 @@ registerNode({
 // ── Simple visualization boxes ──────────────────────────────────────────
 
 registerNode({
-  id: BoxType.VIS_TABLE,
+  id: NodeType.VIS_SIMPLE,
   category: 'vis_simple',
-  label: 'Table',
+  label: 'Simple View',
   icon: faTable,
-  inputPorts: [{ types: TABULAR_DATA, cardinality: '1' }],
-  outputPorts: [{ types: TABULAR_DATA, cardinality: '1' }],
-  editor: 'none',
-  inPalette: false,
-  description: 'The Table box is responsible for displaying DataFrames and GeoDataFrames in a tabular format.',
-  hasCode: false,
-  hasWidgets: false,
-  hasGrammar: false,
-  hasProvenance: true,
-  adapter: {
-    handles: withBidirectional(standardInOut()),
-    editor: { code: false, grammar: false, widgets: false, provenance: false },
-    container: {},
-    inputIconType: '1',
-    outputIconType: '1',
-    showTemplateModal: true,
-    useLifecycle: useTableLifecycle,
-  },
-});
-
-registerNode({
-  id: BoxType.VIS_TEXT,
-  category: 'vis_simple',
-  label: 'Text',
-  icon: faFont,
-  inputPorts: [{ types: [SupportedType.VALUE], cardinality: '1' }],
-  outputPorts: [{ types: [SupportedType.VALUE], cardinality: '1' }],
-  editor: 'none',
-  inPalette: false,
-  description: 'The Text box is responsible for displaying text.',
-  hasCode: false,
-  hasWidgets: true,
-  hasGrammar: false,
-  adapter: {
-    handles: withBidirectional(standardInOut()),
-    editor: { code: false, grammar: false, widgets: true },
-    container: { handleType: 'in/out' },
-    inputIconType: '1',
-    showTemplateModal: false,
-    useLifecycle: useTextLifecycle,
-  },
-});
-
-registerNode({
-  id: BoxType.VIS_IMAGE,
-  category: 'vis_simple',
-  label: 'Image',
-  icon: faImage,
-  inputPorts: [{ types: [SupportedType.DATAFRAME], cardinality: '1' }],
-  outputPorts: [{ types: [SupportedType.DATAFRAME], cardinality: '1' }],
+  inputPorts: [{ types: ALL_TYPES, cardinality: '1' }],
+  outputPorts: [{ types: ALL_TYPES, cardinality: '1' }],
   editor: 'none',
   inPalette: true,
   paletteOrder: 8,
-  description: 'The Image box is responsible for displaying images.',
+  description: 'Displays incoming data: renders a table for DataFrames, an image grid for image DataFrames, or passes through other values.',
   hasCode: false,
   hasWidgets: false,
   hasGrammar: false,
@@ -406,18 +395,66 @@ registerNode({
   adapter: {
     handles: withBidirectional(standardInOut()),
     editor: { code: false, grammar: false, widgets: false, provenance: false },
-    container: { styles: { paddingLeft: '16px' } },
+    container: {},
     inputIconType: '1',
     outputIconType: '1',
     showTemplateModal: false,
-    useLifecycle: useImageLifecycle,
+    useLifecycle: useSimpleVisLifecycle,
   },
 });
 
-// ── Flow boxes ──────────────────────────────────────────────────────────
+registerNode({
+  id: NodeType.AUTK_PLOT,
+  category: 'vis_simple',
+  label: 'AutkPlot',
+  icon: faChartLine,
+  inputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON, SupportedType.GEODATAFRAME, SupportedType.DATAFRAME], cardinality: '1' }],
+  outputPorts: [],
+  editor: 'code',
+  inPalette: true,
+  paletteOrder: 10,
+  description: 'Renders charts using autk-plot. Supports scatterplot, barchart, linechart, heatmatrix, parallel-coordinates, and table. Edit the code to configure the chart type and data mapping.',
+  hasCode: true,
+  hasWidgets: false,
+  hasGrammar: false,
+  adapter: {
+    handles: inputOnly(),
+    editor: { code: true, grammar: false, widgets: false },
+    container: { handleType: 'in' },
+    inputIconType: '1',
+    showTemplateModal: false,
+    useLifecycle: useAutkPlotLifecycle,
+  },
+});
 
 registerNode({
-  id: BoxType.FLOW_SWITCH,
+  id: NodeType.AUTK_MAP,
+  category: 'vis_simple',
+  label: 'AutkMap',
+  icon: faMap,
+  inputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON], cardinality: '1' }],
+  outputPorts: [],
+  editor: 'code',
+  inPalette: true,
+  paletteOrder: 9,
+  description: 'Renders urban 3D map layers using autk-map. Receives a layer array from a JS Computation node and renders it to a canvas. Edit the code to customize the rendering.',
+  hasCode: true,
+  hasWidgets: false,
+  hasGrammar: false,
+  adapter: {
+    handles: inputOnly(),
+    editor: { code: true, grammar: false, widgets: false },
+    container: { handleType: 'in' },
+    inputIconType: '1',
+    showTemplateModal: false,
+    useLifecycle: useAutkMapLifecycle,
+  },
+});
+
+// ── Flow nodes ──────────────────────────────────────────────────────────
+
+registerNode({
+  id: NodeType.FLOW_SWITCH,
   category: 'flow',
   label: 'Flow Switch',
   icon: faRepeat,
@@ -441,7 +478,7 @@ registerNode({
 });
 
 registerNode({
-  id: BoxType.MERGE_FLOW,
+  id: NodeType.MERGE_FLOW,
   category: 'flow',
   label: 'Merge Flow',
   icon: faCodeMerge,
@@ -465,16 +502,16 @@ registerNode({
         isConnectable && (data.suggestionType == undefined || data.suggestionType === 'none'),
     }],
     editor: null,
-    container: { noContent: true, boxWidth: 100, boxHeight: 60 + 5 * 50 },
+    container: { noContent: true, nodeWidth: 100, nodeHeight: 60 + 5 * 50 },
     showTemplateModal: false,
     useLifecycle: useMergeFlowLifecycle,
   },
 });
 
-// ── Special boxes ───────────────────────────────────────────────────────
+// ── Special nodes ───────────────────────────────────────────────────────
 
 registerNode({
-  id: BoxType.COMMENTS,
+  id: NodeType.COMMENTS,
   category: 'flow',
   label: 'Comments',
   icon: faCopy,

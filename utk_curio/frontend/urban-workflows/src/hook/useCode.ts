@@ -3,11 +3,15 @@ import { Node } from "reactflow";
 import { v4 as uuid } from "uuid";
 
 import { IInteraction, useFlowContext } from "../providers/FlowProvider";
+import { useProvenanceContext } from "../providers/ProvenanceProvider";
 import { PythonInterpreter } from "../PythonInterpreter";
+import { JavaScriptInterpreter } from "../JavaScriptInterpreter";
+import { TrillGenerator } from "../TrillGenerator";
 import { usePosition } from "./usePosition";
-import { AccessLevelType, BoxType, EdgeType } from "../constants";
+import { AccessLevelType, NodeType, EdgeType } from "../constants";
 
 const pythonInterpreter = new PythonInterpreter();
+const jsInterpreter = new JavaScriptInterpreter();
 
 type CreateCodeNodeOptions = {
     nodeId?: string;
@@ -24,15 +28,23 @@ type CreateCodeNodeOptions = {
     inType?: string;
     out?: string;
     keywords?: number[];
+    nodeWidth?: number;
+    nodeHeight?: number;
+    dashboardPinned?: boolean;
+    dashboardX?: number;
+    dashboardY?: number;
+    dashboardWidth?: number;
+    dashboardHeight?: number;
 };
 
 interface IUseCode {
-    createCodeNode: (boxType: string, options?: CreateCodeNodeOptions) => void;
+    createCodeNode: (nodeType: string, options?: CreateCodeNodeOptions) => void;
     loadTrill: (trill: any, suggestionType?: string) => void;
 }
 
 export function useCode(): IUseCode {
     const { addNode, setOutputs, setInteractions, applyNewPropagation, applyNewOutput, loadParsedTrill } = useFlowContext();
+    const { loadNodeProvenance } = useProvenanceContext();
     const { getPosition } = usePosition();
 
     const outputCallback = useCallback(
@@ -64,7 +76,7 @@ export function useCode(): IUseCode {
     }, [setInteractions]);
 
     // suggestionType: "workflow" | "connection" | "none"
-    const loadTrill = (trill: any, suggestionType?: string) => {
+    const loadTrill = (trill: any, suggestionType?: string, fromProvenance?: boolean) => {
 
         let nodes = [];
         let edges = [];
@@ -72,6 +84,26 @@ export function useCode(): IUseCode {
         for(const node of trill.dataflow.nodes){
             let x = node.x;
             let y = node.y;
+            const parsedWidth =
+                typeof node.width === "number"
+                    ? node.width
+                    : typeof node.nodeWidth === "number"
+                        ? node.nodeWidth
+                        : typeof node.metadata?.width === "number"
+                            ? node.metadata.width
+                            : typeof node.metadata?.nodeWidth === "number"
+                                ? node.metadata.nodeWidth
+                                : undefined;
+            const parsedHeight =
+                typeof node.height === "number"
+                    ? node.height
+                    : typeof node.nodeHeight === "number"
+                        ? node.nodeHeight
+                        : typeof node.metadata?.height === "number"
+                            ? node.metadata.height
+                            : typeof node.metadata?.nodeHeight === "number"
+                                ? node.metadata.nodeHeight
+                                : undefined;
 
             if(x == undefined || y == undefined){
                 let position = getPosition();
@@ -100,6 +132,25 @@ export function useCode(): IUseCode {
             if(node.metadata != undefined && node.metadata.keywords != undefined)
                 nodeMeta.keywords = node.metadata.keywords;
 
+            if(typeof parsedWidth === "number")
+                nodeMeta.nodeWidth = parsedWidth;
+
+            if(typeof parsedHeight === "number")
+                nodeMeta.nodeHeight = parsedHeight;
+
+            if(node.dashboardPinned)
+                nodeMeta.dashboardPinned = true;
+
+            if(typeof node.dashboardX === "number"){
+                nodeMeta.dashboardX = node.dashboardX;
+                nodeMeta.dashboardY = node.dashboardY;
+            }
+
+            if(typeof node.dashboardWidth === "number"){
+                nodeMeta.dashboardWidth = node.dashboardWidth;
+                nodeMeta.dashboardHeight = node.dashboardHeight;
+            }
+
             if(suggestionType != undefined)
                 nodeMeta.suggestionType = suggestionType;
 
@@ -112,7 +163,7 @@ export function useCode(): IUseCode {
             let targetHandle = "in";
 
             for(let i = 0; i < 5; i++){
-                if(edge.id.includes("in_"+i))
+                if(edge.id && edge.id.includes("in_"+i))
                     targetHandle = "in_"+i;
             }
 
@@ -144,16 +195,23 @@ export function useCode(): IUseCode {
             edges.push(add_edge);
         }
 
-        if(suggestionType == undefined)
-            loadParsedTrill(trill.dataflow.name, trill.dataflow.task, nodes, edges, true, false); 
-        else if(suggestionType == "workflow")
-            loadParsedTrill(trill.dataflow.name, trill.dataflow.task, nodes, edges, false, true); // if loading as suggestion deactivate provenance and merge
-        else
-            loadParsedTrill(trill.dataflow.name, trill.dataflow.task, nodes, edges, false, true); 
+        if (fromProvenance) {
+            // Reverting to a historical version: preserve the current provenance graph.
+            // latestTrill was already set to the target version by switchProvenanceTrill.
+            const savedProv = TrillGenerator.getSerializableDataflowProvenance();
+            loadParsedTrill(trill.dataflow.name, trill.dataflow.task, nodes, edges, false, false, trill.dataflow.packages || []);
+            TrillGenerator.loadDataflowProvenance(savedProv);
+        } else if(suggestionType == undefined) {
+            loadParsedTrill(trill.dataflow.name, trill.dataflow.task, nodes, edges, true, false, trill.dataflow.packages || []);
+            if (trill.nodeProvenance) loadNodeProvenance(trill.nodeProvenance);
+            if (trill.dataflowProvenance) TrillGenerator.loadDataflowProvenance(trill.dataflowProvenance);
+        } else {
+            loadParsedTrill(trill.dataflow.name, trill.dataflow.task, nodes, edges, false, true);
+        }
 
     }
 
-    const generateCodeNode = useCallback((boxType: string, options: CreateCodeNodeOptions = {}) => {
+    const generateCodeNode = useCallback((nodeType: string, options: CreateCodeNodeOptions = {}) => {
         const {
             nodeId = uuid(),
             code = undefined,
@@ -168,16 +226,24 @@ export function useCode(): IUseCode {
             goal = "",
             inType = "DEFAULT",
             out = "DEFAULT",
-            keywords = []
+            keywords = [],
+            nodeWidth = undefined,
+            nodeHeight = undefined,
+            dashboardPinned = undefined,
+            dashboardX = undefined,
+            dashboardY = undefined,
+            dashboardWidth = undefined,
+            dashboardHeight = undefined,
         } = options;
 
         const node: Node = {
             id: nodeId,
-            type: boxType,
+            type: nodeType,
             position,
             data: {
                 nodeId: nodeId,
                 pythonInterpreter: pythonInterpreter,
+                jsInterpreter: jsInterpreter,
                 defaultCode: code,
                 description,
                 templateId,
@@ -185,12 +251,19 @@ export function useCode(): IUseCode {
                 accessLevel,
                 warnings,
                 hidden: false,
-                nodeType: boxType,
+                nodeType: nodeType,
                 customTemplate,
                 suggestionType,
                 goal,
                 in: inType,
                 out,
+                nodeWidth,
+                nodeHeight,
+                dashboardPinned,
+                dashboardX,
+                dashboardY,
+                dashboardWidth,
+                dashboardHeight,
                 input: "",
                 inputTypes: [],
                 keywords,
@@ -204,8 +277,8 @@ export function useCode(): IUseCode {
 
     }, [addNode, outputCallback, getPosition]);
 
-    const createCodeNode = useCallback((boxType: string, options: CreateCodeNodeOptions = {}) => {
-        let node = generateCodeNode(boxType, options);
+    const createCodeNode = useCallback((nodeType: string, options: CreateCodeNodeOptions = {}) => {
+        let node = generateCodeNode(nodeType, options);
         addNode(node, undefined, true);
     }, [addNode, outputCallback, getPosition]);
 

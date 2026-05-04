@@ -2,15 +2,45 @@ const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const Dotenv = require("dotenv-webpack");
 
+// The `utk` file dependency bundles `require("vega-lite")`; without aliases, webpack can
+// resolve that package from `utk-ts/node_modules`, which may be incomplete. Pin the Vega/D3
+// stack to this app's node_modules so hoisted transitive deps (vega-util, d3-format, …) always resolve.
+const nm = (...segments) => path.join(__dirname, "node_modules", ...segments);
+
 module.exports = {
   entry: "./src/index.tsx",
   output: {
     filename: "bundle.js",
     path: path.resolve(__dirname, "dist"),
+    publicPath: process.env.PUBLIC_PATH || "/",
+  },
+  cache: {
+    type: 'filesystem',
+    buildDependencies: {
+      config: [__filename],
+    },
+  },
+  devServer: {
+    historyApiFallback: true,
+    client: {
+      overlay: {
+        // ResizeObserver loop warnings are benign browser notifications fired when
+        // a resize callback cannot deliver all updates in a single animation frame.
+        // Webpack-dev-server incorrectly surfaces them as hard errors via window.onerror.
+        runtimeErrors: (err) =>
+          err?.message !== 'ResizeObserver loop completed with undelivered notifications.',
+      },
+    },
   },
   resolve: {
     extensions: [".tsx", ".ts", ".js"],
     modules: [path.resolve(__dirname, 'src'), 'node_modules'],
+    alias: {
+      vega: nm("vega"),
+      "vega-lite": nm("vega-lite"),
+      "vega-util": nm("vega-util"),
+      "d3-format": nm("d3-format"),
+    },
   },
   devtool: "source-map",
   module: {
@@ -62,6 +92,7 @@ module.exports = {
     }),
     new Dotenv({
       path: ".env",
+      systemvars: true,
     }),
   ],
 };

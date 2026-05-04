@@ -1,6 +1,9 @@
 import os
 
+import pytest
+
 from .utils import REPO_ROOT
+from .fixtures import _clean_db
 
 # ------------------------------------------------------------------ #
 # Workflow scenario discovery
@@ -9,29 +12,44 @@ from .utils import REPO_ROOT
 #: Master list of workflow JSON filenames to test.
 #: Comment out / add entries here to control the full test matrix.
 WORKFLOW_FILES = [
-    "DefaultWorkflow.json",
+    # Uncomment to run the deatailed examples
+    # "docs/examples/01-visual-analytics.json",
+    # "docs/examples/02-what-if.json",
+    # "docs/examples/03-expert-in-the-loop.json",
+    # "docs/examples/04-accessibility-analysis.json",
+    # "docs/examples/05-flooding-complaints.json",
+    # "docs/examples/07-speed-camera.json",
+    # "docs/examples/08-red-light-violation.json",
+    # "docs/examples/09-energy-efficiency.json",
+    # "docs/examples/10-green-roofs.json",
 
-    "DataPool_df.json",
-    "DataPool_gdf.json",
 
-    "DataPool_Vega_2.json",
-    "DataPool_Vega.json",
-    "DataPool_UTK.json",
-
-    "Image.json",
-    "Merge.json",
-    "MergeFlowDataPool.json",
-
-    "Interaction.json",
-    "Interaction_UTK.json",
-    "Interaction_Vega.json",
-
+    # TODO: extract the worrkflows inside
     # "NewMerge.json",
-    "Number Multiplier (Widget).json",
 
-    "Vega.json",
+    "docs/examples/dataflows/DefaultWorkflow.json",
 
-    "UTK.json",
+    "docs/examples/dataflows/DataPool_df.json",
+    "docs/examples/dataflows/DataPool_gdf.json",
+
+    "docs/examples/dataflows/DataPool_Vega_2.json",
+    "docs/examples/dataflows/DataPool_Vega.json",
+    "docs/examples/dataflows/DataPool_UTK.json",
+
+    "docs/examples/dataflows/Image.json",
+    "docs/examples/dataflows/SimpleView_Table.json",
+    "docs/examples/dataflows/Merge.json",
+    "docs/examples/dataflows/MergeFlowDataPool.json",
+
+    "docs/examples/dataflows/Interaction.json",
+    "docs/examples/dataflows/Interaction_UTK.json",
+    "docs/examples/dataflows/Interaction_Vega.json",
+
+    "docs/examples/dataflows/Number_Multiplier_Widget.json",
+
+    "docs/examples/dataflows/Vega.json",
+
+    "docs/examples/dataflows/UTK.json",
 ]
 
 
@@ -50,12 +68,26 @@ def load_workflow_files_from_folder():
         if subset
         else WORKFLOW_FILES
     )
-    return [os.path.join(REPO_ROOT, "tests", name) for name in names]
+    return [os.path.join(REPO_ROOT, name) for name in names]
 
 
 # ------------------------------------------------------------------ #
 # Dynamic parametrization hook
 # ------------------------------------------------------------------ #
+
+@pytest.fixture(autouse=True)
+def e2e_clean_db(request, test_db_paths):
+    """Truncate mutable SQLAlchemy tables before and after each frontend test.
+
+    Scoped to ``test_frontend/`` via this conftest so ``test_projects`` /
+    ``test_users`` (their own ``app`` fixture) are not affected.  Uses HTTP
+    ``/api/testing/reset-db`` when ``CURIO_E2E_USE_EXISTING=1`` so the
+    running backend wipes its own sqlite file.
+    """
+    _clean_db(request, test_db_paths)
+    yield
+    _clean_db(request, test_db_paths)
+
 
 def pytest_generate_tests(metafunc):
     """Parametrize any test / fixture that requests ``loaded_workflow``.

@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
-// Bootstrap
-import Button from "react-bootstrap/Button";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { BoxType } from "../../constants";
+import { NodeType } from "../../constants";
 
 // Editor
 import Editor from "@monaco-editor/react";
@@ -15,7 +13,7 @@ type CodeEditorProps = {
     setOutputCallback: any;
     data: any;
     output: ICodeData;
-    boxType: BoxType;
+    nodeType: NodeType;
     replacedCode: string; // code with all marks resolved
     sendCodeToWidgets: any;
     replacedCodeDirty: boolean;
@@ -28,7 +26,7 @@ function CodeEditor({
     setOutputCallback,
     data,
     output,
-    boxType,
+    nodeType,
     replacedCode,
     sendCodeToWidgets,
     replacedCodeDirty,
@@ -37,9 +35,10 @@ function CodeEditor({
     floatCode,
 }: CodeEditorProps) {
     const [code, setCode] = useState<string>(""); // code with all original markers
+    const [execCount, setExecCount] = useState<number>(0);
 
-    const { workflowNameRef } = useFlowContext();
-    const { boxExecProv } = useProvenanceContext();
+    const { workflowNameRef, markNodeExecuted, markNodeStale, signalNodeExecDone } = useFlowContext();
+    const { nodeExecProv } = useProvenanceContext();
 
     const replacedCodeDirtyBypass = useRef(false);
     const defaultValueBypass = useRef(false);
@@ -47,6 +46,7 @@ function CodeEditor({
     // @ts-ignore
     const handleCodeChange = (value, event) => {
         setCode(value);
+        markNodeStale(data.nodeId);
     };
 
     useEffect(() => {
@@ -62,54 +62,53 @@ function CodeEditor({
         if (floatCode != undefined) floatCode(code);
     }, [code]);
 
+    useEffect(() => {
+        if (output.code === "success" || output.code === "error") {
+            setExecCount(prev => prev + 1);
+        }
+    }, [output.code]);
+
     const processExecutionResult = (result: any) => {
-        let outputContent = "";
-        outputContent += "stdout:\n"+result.stdout.slice(0, 100);
-        outputContent += "\nstderr:\n"+result.stderr;
+        const hasOutput = result.output?.path !== "";
 
-        // outputContent += "\nnode output:\n";
-        // if (outputContent.length > 100) {
-        //     outputContent += result.codeOut.slice(0, 100) + "...";
-        // }
-        // else {
-        //     outputContent += result.codeOut;
-        // }
-
-        outputContent += "\nSaved to file: "+result.output.path;
-
-        setOutputCallback({ code: "success", content: outputContent });
-
-        if (result.stderr == "") {
-            // No error in the execution
+        if (hasOutput) {
+            let outputContent = "stdout:\n" + result.stdout.slice(0, 100);
+            if (result.stderr) outputContent += "\nstderr:\n" + result.stderr;
+            outputContent += "\nSaved to file: " + result.output.path;
+            setOutputCallback({ code: "success", content: outputContent });
             data.outputCallback(data.nodeId, result.output);
+            markNodeExecuted(data.nodeId);
         } else {
             setOutputCallback({ code: "error", content: result.stderr });
+            signalNodeExecDone(data.nodeId);
         }
     };
 
     // marks were resolved and new code is available
     useEffect(() => {
-        if (
-            replacedCode != "" &&
-            replacedCodeDirtyBypass.current &&
-            output.code == "exec"
-        ) {
-            // the code was executing and not only resolving widgets
-            // console.log(data);
-            data.pythonInterpreter.interpretCode(
-                code,
-                replacedCode,
-                data.input,
-                data.inputTypes,
-                processExecutionResult,
-                boxType,
-                data.nodeId,
-                workflowNameRef.current,
-                boxExecProv
-            );
+        if (!replacedCodeDirtyBypass.current) {
+            replacedCodeDirtyBypass.current = true;
+            return;
         }
-
-        replacedCodeDirtyBypass.current = true;
+        if (output.code !== "exec") return;
+        if (replacedCode === "") {
+            setOutputCallback({ code: "error", content: "No code to execute" });
+            return;
+        }
+        const interpreter = (nodeType === NodeType.JS_COMPUTATION && data.jsInterpreter)
+            ? data.jsInterpreter
+            : data.pythonInterpreter;
+        interpreter.interpretCode(
+            code,
+            replacedCode,
+            data.input,
+            data.inputTypes,
+            processExecutionResult,
+            nodeType,
+            data.nodeId,
+            workflowNameRef.current,
+            nodeExecProv
+        );
     }, [replacedCodeDirty]);
 
     useEffect(() => {
@@ -143,40 +142,55 @@ function CodeEditor({
         }
     }, []);
 
+    const execLabel = output.code === "exec" ? "[*]:" : execCount > 0 ? `[${execCount}]:` : "[ ]:";
+    const outputText = output.code === "exec"
+        ? "Running..."
+        : typeof output.content === "string" && output.content
+            ? output.content
+            : "No output yet";
+
     return (
-        <div className={"nowheel nodrag"} style={{ height: "100%" }}>
-            <Editor
-                language="python"
-                theme="vs-dark"
-                value={code}
-                onChange={handleCodeChange}
-                options={{
-                    // @ts-ignore
-                    inlineSuggest: true,
-                    fontSize: 8,
-                    formatOnType: true,
-                    // @ts-ignore
-                    autoClosingBrackets: true,
-                    minimap: { enabled: false },
-                    readOnly: readOnly,
+        <div className="nowheel nodrag" style={{ height: "100%", display: "flex", flexDirection: "column", backgroundColor: "#fff" }}>
+            <div style={{ flex: 2, minHeight: 0 }}>
+                <Editor
+                    height="100%"
+                    language={nodeType === NodeType.JS_COMPUTATION ? "javascript" : "python"}
+                    theme="vs"
+                    value={code}
+                    onChange={handleCodeChange}
+                    options={{
+                        // @ts-ignore
+                        inlineSuggest: true,
+                        fontSize: 13,
+                        fontFamily: "'Source Code Pro', Consolas, 'Courier New', monospace",
+                        formatOnType: true,
+                        autoClosingBrackets: "always",
+                        minimap: { enabled: false },
+                        readOnly: readOnly,
+                        scrollBeyondLastLine: false,
+                    }}
+                />
+            </div>
+            <div
+                className="nowheel nodrag"
+                style={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    backgroundColor: "#f7f7f7",
+                    borderTop: "1px solid #e0e0e0",
+                    padding: "4px 8px",
+                    fontSize: "11px",
+                    fontFamily: "'Source Code Pro', Consolas, 'Courier New', monospace",
+                    whiteSpace: "pre-wrap",
+                    color: output.code === "error" ? "#c0392b" : "#333",
+                    userSelect: "text",
+                    cursor: "text",
                 }}
-            />
-            {/* <div
-                className="nowheel"
-                style={{ width: "100%", maxHeight: "200px", overflowY: "scroll" }}
             >
-                {output == "success" ? "Done" : output == "exec" ? "Executing..." : output != "" ? "Error: "+output : ""}
-            </div> */}
-            {/* <Button
-                as="a"
-                variant="primary"
-                onClick={() => {
-                    setOutputCallback("exec");
-                    sendCodeToWidgets(code); // will resolve markers
-                }}
-            >
-                Run code
-          </Button> */}
+                <span style={{ color: "#303F9F", fontWeight: "bold", marginRight: "6px" }}>{execLabel}</span>
+                {outputText}
+            </div>
         </div>
     );
 }

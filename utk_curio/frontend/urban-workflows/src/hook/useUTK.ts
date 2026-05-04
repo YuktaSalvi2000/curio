@@ -1,21 +1,32 @@
 import React, { useEffect, useRef, useState } from "react";
 
-import { BoxType, ResolutionTypeUTK, VisInteractionType } from "../constants";
+import { NodeType, ResolutionTypeUTK, VisInteractionType } from "../constants";
 import { Environment, GrammarInterpreter } from "utk";
 
 import { get_camera } from "../utils/parsing";
 import { fetchData } from "../services/api";
+import { getToken } from "../utils/authApi";
 import { formatDate, getType, mapTypes } from "../utils/formatters";
 
+<<<<<<< HEAD
 
+=======
+import { ICodeData } from "../types";
+>>>>>>> upstream/main
 import { useFlowContext } from "../providers/FlowProvider";
 import { useProvenanceContext } from "../providers/ProvenanceProvider";
+import { useToastContext } from "../providers/ToastProvider";
 
 export function useUTK({ data, code }: { data: any, code: string }) {
+<<<<<<< HEAD
+=======
+  const { showToast } = useToastContext();
+  const [output, setOutput] = useState<ICodeData>({ code: "", content: "" });
+>>>>>>> upstream/main
   const { workflowNameRef } = useFlowContext();
+  const { nodeExecProv } = useProvenanceContext();
 
-  const [inputData, setInputData] = useState();
-
+  const [inputData, setInputData] = useState<any>();
   const [defaultGrammar, setDefaultGrammar] = useState<string>("{}");
 
   const [resolutionMode, _setResolutionMode] = useState<ResolutionTypeUTK>(
@@ -54,6 +65,7 @@ export function useUTK({ data, code }: { data: any, code: string }) {
   const [showLoading, setShowLoading] = useState<boolean>(false);
 
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+<<<<<<< HEAD
   const isProcessingRef = useRef<boolean>(false);
   const pendingPlayRef = useRef<boolean>(false);
 
@@ -498,6 +510,14 @@ export function useUTK({ data, code }: { data: any, code: string }) {
 
     // setOutput("success");
     data.outputCallback(data.nodeId, data.input);
+=======
+  const [sendCode, setSendCode] = useState<object | undefined>(undefined);
+
+  const [disablePlay, setDisablePlay] = useState<boolean>(true);
+
+  const setSendCodeCallback = (_sendCode: any) => {
+    setSendCode(() => _sendCode);
+>>>>>>> upstream/main
   };
 
   //Interaction
@@ -505,7 +525,6 @@ export function useUTK({ data, code }: { data: any, code: string }) {
     let dfIN: string[] = [];
 
     if (data.input.data) {
-      console.log(data);
       data.input.data.features.forEach(({ geometry, ...rest }: any) => {
         dfIN.push(JSON.stringify(rest));
       });
@@ -514,14 +533,17 @@ export function useUTK({ data, code }: { data: any, code: string }) {
     const isEqual = JSON.stringify(inputData) === JSON.stringify(dfIN);
 
     if (!isEqual && inputData !== undefined) {
+      const _token = getToken();
+      const _authHeader: Record<string, string> = _token ? { "Authorization": `Bearer ${_token}` } : {};
       fetch(`${process.env.BACKEND_URL}/insert_attribute_value_change`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ..._authHeader,
         },
         body: JSON.stringify({
           data: {
-            activity_name: BoxType.VIS_UTK + "-" + data.nodeId,
+            activity_name: NodeType.VIS_UTK + "-" + data.nodeId,
           },
         }),
       });
@@ -538,11 +560,11 @@ export function useUTK({ data, code }: { data: any, code: string }) {
 
       const typesOutput = [...typesInput];
 
-      boxExecProv(
+      nodeExecProv(
         startTime,
         endTime,
         workflowNameRef.current,
-        BoxType.VIS_UTK + "-" + data.nodeId,
+        NodeType.VIS_UTK + "-" + data.nodeId,
         mapTypes(typesInput),
         mapTypes(typesOutput),
         code,
@@ -551,17 +573,6 @@ export function useUTK({ data, code }: { data: any, code: string }) {
         true
       );
 
-      fetch(`${process.env.BACKEND_URL}/insert_visualization`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          data: {
-            activity_name: BoxType.VIS_UTK + "-" + data.nodeId,
-          },
-        }),
-      });
     }
   }, [data]);
 
@@ -606,17 +617,10 @@ export function useUTK({ data, code }: { data: any, code: string }) {
     }
   }, [interactionArrays]);
 
-  useEffect(() => {
-    data.interactionsCallback(interactions, data.nodeId);
-  }, [interactions]);
 
-  const parseInputData = async (input: any) => {
-    let parsedInput = data.input; //JSON.parse(data.input);
-    const errorMsg = "UTK box can only receive geodataframes";
-    if (parsedInput == "") {
-      throw new Error(errorMsg);
-    }
+  Environment.serverless = true;
 
+<<<<<<< HEAD
     console.log("parsedInput.dataType", parsedInput.dataType);
 
     // validate input
@@ -671,10 +675,153 @@ export function useUTK({ data, code }: { data: any, code: string }) {
 
     let values = await parseInputData(data.input);
     // TODO: Refresh UTK
+=======
+  const compileGrammar = (spec: string) => {
+    try {
+      const formatDate = (date: Date) => {
+        // Get individual date components
+        const month = date.toLocaleString("default", { month: "short" });
+        const day = date.getDate();
+        const year = date.getFullYear();
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
+        const seconds = date.getSeconds();
 
-    const { generatedGrammar, json, components, interactionCallbacks } =
-      await setToLayers(values);
+        // Format the string
+        const formattedDate = `${month} ${day} ${year} ${hours}:${minutes}:${seconds}`;
 
+        return formattedDate;
+      };
+
+      let startTime = formatDate(new Date());
+
+      const outerMainDiv = document.getElementById(
+        "utk" + data.nodeId + "outer"
+      ) as HTMLElement;
+      outerMainDiv.innerHTML = "";
+      outerMainDiv.style.width = "100%";
+      outerMainDiv.style.height = "100%";
+      let mainDiv = document.createElement("div") as HTMLElement;
+      mainDiv.style.width = "100%";
+      mainDiv.style.height = "100%";
+      mainDiv.id = "utk" + data.nodeId;
+      outerMainDiv.appendChild(mainDiv);
+
+      if (spec != "") {
+        const grammarInterpreter = new GrammarInterpreter(
+          data.nodeId,
+          JSON.parse(spec),
+          mainDiv,
+          serverlessLayers,
+          serverlessJoinedJsons,
+          serverlessComponents,
+          interactionCallback
+        );
+        setGrammarInterpreterObj(grammarInterpreter);
+      }
+
+      let endTime = formatDate(new Date());
+
+      const getType = (inputs: any[]) => {
+        let typesInput: string[] = [];
+
+        for (const input of inputs) {
+          let parsedInput = input;
+
+          if (typeof input == "string") parsedInput = JSON.parse(parsedInput);
+
+          if (parsedInput.dataType == "outputs") {
+            typesInput = typesInput.concat(getType(parsedInput.data));
+          } else {
+            typesInput.push(parsedInput.dataType);
+          }
+        }
+
+        return typesInput;
+      };
+
+      const mapTypes = (typesList: string[]) => {
+        let mapTypes: any = {
+          DATAFRAME: 0,
+          GEODATAFRAME: 0,
+          VALUE: 0,
+          LIST: 0,
+          JSON: 0,
+        };
+
+        for (const typeValue of typesList) {
+          if (
+            typeValue == "int" ||
+            typeValue == "str" ||
+            typeValue == "float" ||
+            typeValue == "bool"
+          ) {
+            mapTypes["VALUE"] = 1;
+          } else if (typeValue == "list") {
+            mapTypes["LIST"] = 1;
+          } else if (typeValue == "dict") {
+            mapTypes["JSON"] = 1;
+          } else if (typeValue == "dataframe") {
+            mapTypes["DATAFRAME"] = 1;
+          } else if (typeValue == "geodataframe") {
+            mapTypes["GEODATAFRAME"] = 1;
+          }
+        }
+
+        return mapTypes;
+      };
+
+      let typesInput: string[] = [];
+
+      if (data.input != "") typesInput = getType([data.input]);
+
+      let typesOuput: string[] = [...typesInput];
+
+      nodeExecProv(
+        startTime,
+        endTime,
+        workflowNameRef.current,
+        NodeType.VIS_UTK + "-" + data.nodeId,
+        mapTypes(typesInput),
+        mapTypes(typesOuput),
+        code
+      );
+
+      setOutput({ code: "success", content: "" });
+    } catch (error: any) {
+      setOutput({ code: "error", content: error.message });
+    }
+  };
+
+  // list will contain all coordinates from all layers
+  const get_camera = (coordinates: number[]) => {
+    let minLat = undefined;
+    let minLon = undefined;
+    let maxLat = undefined;
+    let maxLon = undefined;
+
+    for (let i = 0; i < Math.trunc(coordinates.length / 3); i++) {
+      if (minLat == undefined || coordinates[i * 3] < minLat) {
+        minLat = coordinates[i * 3];
+      }
+
+      if (minLon == undefined || coordinates[i * 3 + 1] < minLon) {
+        minLon = coordinates[i * 3 + 1];
+      }
+
+      if (maxLat == undefined || coordinates[i * 3] > maxLat) {
+        maxLat = coordinates[i * 3];
+      }
+
+      if (maxLon == undefined || coordinates[i * 3 + 1] > maxLon) {
+        maxLon = coordinates[i * 3 + 1];
+      }
+    }
+>>>>>>> upstream/main
+
+    let center = [0, 0, 1];
+
+<<<<<<< HEAD
     // Auto-compile the grammar now that all data is ready.
     // Pass local variables directly so we don't depend on React state propagation.
     const grammarSpec = JSON.stringify(generatedGrammar, null, 4);
@@ -683,10 +830,28 @@ export function useUTK({ data, code }: { data: any, code: string }) {
     // Signal that grammar/data processing is complete
     setIsProcessing(false);
     isProcessingRef.current = false;
+=======
+    if (
+      minLat != undefined &&
+      maxLat != undefined &&
+      minLon != undefined &&
+      maxLon != undefined
+    )
+      center = [(minLat + maxLat) / 2.0, (minLon + maxLon) / 2.0, 1];
+>>>>>>> upstream/main
 
+    return {
+      position: center,
+      direction: {
+        right: [0, 0, 3000],
+        lookAt: [0, 0, 0],
+        up: [0, 1, 0],
+      },
+    };
   };
 
   useEffect(() => {
+<<<<<<< HEAD
     try {
       if (data.input == "") return;
       processData();
@@ -695,7 +860,410 @@ export function useUTK({ data, code }: { data: any, code: string }) {
       isProcessingRef.current = false;
       alert(error.message);
     }
+=======
+    const processData = async () => {
+      if (data.input != "") {
+        let parsedInput = data.input; //JSON.parse(data.input);
+
+        let validInput = true;
+
+        // validate input
+        if (parsedInput.dataType == "outputs") {
+          for (const elem of parsedInput.data) {
+            if (elem.dataType != "geodataframe") {
+              showToast("UTK node can only receive geodataframes", "error");
+              validInput = false;
+            }
+          }
+        } else if (parsedInput.dataType != "geodataframe") {
+          showToast("UTK node can only receive geodataframes", "error");
+          validInput = false;
+        }
+
+        // TODO: Refresh UTK
+
+        if (validInput) {
+          // send data to UTK
+          let geojsons;
+          if(parsedInput.path) {
+            geojsons = await fetchData(`${parsedInput.path}`);
+          }
+          else {
+            geojsons = parsedInput;
+          }
+
+          
+          // console.log(geojsons);
+
+          // let geoJsons: any = [];
+
+          if (geojsons.dataType == "outputs") {
+            geojsons = geojsons.data.map((elem: any) => {
+              return elem.data;
+            });
+          } else {
+            geojsons = [geojsons.data];
+          }
+
+          for (const geojson of geojsons) {
+            let parsedGeojson = geojson;
+
+            if (typeof geojson == "string")
+              parsedGeojson = JSON.parse(parsedGeojson);
+
+            if (
+              parsedGeojson.metadata != undefined &&
+              parsedGeojson.metadata.name == undefined
+            ) {
+              showToast("All GeoJSON layers for UTK must be named", "error");
+              return;
+            }
+
+            if (parsedGeojson.metadata == undefined) {
+              showToast("All GeoJSON layers for UTK must be named", "error");
+              return;
+            }
+          }
+
+          const _tok = getToken();
+          fetch(process.env.BACKEND_URL + "/toLayers", {
+            method: "POST",
+            body: JSON.stringify({
+              geojsons: geojsons,
+            }),
+            headers: {
+              "Content-type": "application/json; charset=UTF-8",
+              ...(_tok ? { "Authorization": `Bearer ${_tok}` } : {}),
+            },
+          })
+            .then((response) => response.json())
+            .then((json: any) => {
+              let generatedGrammar: any = {};
+
+              generatedGrammar["components"] = [
+                {
+                  id: "grammar_map",
+                  position: {
+                    width: [1, 12],
+                    height: [1, 4],
+                  },
+                },
+              ];
+
+              generatedGrammar["knots"] = [];
+              generatedGrammar["ex_knots"] = [];
+
+              let allCoordinates: number[] = [];
+
+              for (let i = 0; i < json.layers.length; i++) {
+                for (const geometry of json.layers[i].data) {
+                  allCoordinates = allCoordinates.concat(
+                    geometry.geometry.coordinates
+                  );
+                }
+
+                let layer = json.layers[i];
+                let added = false;
+
+                for (const joinedJson of json.joinedJsons) {
+                  if (joinedJson.id == layer.id) {
+                    for (let j = 0; j < joinedJson.incomingId.length; j++) {
+                      let in_name = joinedJson.incomingId[j];
+
+                      added = true;
+                      generatedGrammar["ex_knots"].push({
+                        // joined layers
+                        id: layer.id + j,
+                        out_name: layer.id,
+                        in_name: in_name,
+                      });
+                    }
+                  }
+                }
+
+                if (!added) {
+                  generatedGrammar["ex_knots"].push({
+                    // pure layer
+                    id: layer.id + "0",
+                    out_name: layer.id,
+                  });
+                }
+              }
+
+              generatedGrammar["grid"] = {
+                width: 12,
+                height: 4,
+              };
+
+              generatedGrammar["grammar"] = false;
+
+              setDefaultGrammar(JSON.stringify(generatedGrammar, null, 4));
+
+              let camera = get_camera(allCoordinates);
+
+              // temp
+              let components = [
+                {
+                  id: "grammar_map",
+                  json: {
+                    camera: camera,
+                    knots: generatedGrammar["ex_knots"].map((ex_knot: any) => {
+                      return ex_knot.id;
+                    }),
+                    interactions: generatedGrammar["ex_knots"].map((_: any) => {
+                      return resolutionModeRef.current;
+                    }),
+                    widgets: [
+                      {
+                        type: "TOGGLE_KNOT",
+                      },
+                    ],
+                    grammar_type: "MAP",
+                  },
+                },
+              ];
+
+              setGrammarMapObj(components[0].json);
+
+              let knotToLayerDict: any = {};
+
+              let knotsIds = generatedGrammar["ex_knots"].map((ex_knot: any) => {
+                knotToLayerDict[ex_knot.id] = ex_knot.out_name;
+                return ex_knot.id;
+              });
+
+              let interactionCallbacks: any = [];
+
+              for (const knotId of knotsIds) {
+                interactionCallbacks.push({
+                  knotId: knotId,
+                  callback: (interacted: number[], coordsPerGeom: number[]) => {
+                    if (resolutionModeRef.current != ResolutionTypeUTK.NONE) {
+                      let startingIndex = 0;
+                      let interactionPerGeom: number[] = [];
+
+                      for (let j = 0; j < coordsPerGeom.length; j++) {
+                        let nCoords = coordsPerGeom[j];
+
+                        if (resolutionModeRef.current == ResolutionTypeUTK.PICKING) {
+                          let objectInteracted = true;
+
+                          for (let i = startingIndex; i < startingIndex + nCoords; i++) {
+                            let value = interacted[i];
+
+                            if (value == 0) {
+                              // in picking all coordinates of an object must be selected
+                              objectInteracted = false;
+                              break;
+                            }
+                          }
+
+                          if (objectInteracted){
+                            console.log("interacted with", j);
+                            interactionPerGeom.push(j);
+                          }
+                        }
+                        else if (resolutionModeRef.current == ResolutionTypeUTK.BRUSHING) {
+                          let objectInteracted = false;
+
+                          for (let i = startingIndex; i < startingIndex + nCoords; i++) {
+                            let value = interacted[i];
+
+                            if (value == 1) {
+                              // in brushing only one coordinate needs to be selected for the object to be considered interacted with
+                              objectInteracted = true;
+                              break;
+                            }
+                          }
+
+                          if (objectInteracted) interactionPerGeom.push(j);
+                        }
+
+                        startingIndex += nCoords;
+                      }
+
+                      let interactionsKeys = Object.keys(interactionsRef.current);
+
+                      let newObj: any = {};
+                      for (const interactionKey of interactionsKeys) {
+                        newObj[interactionKey] = {
+                          type: interactionsRef.current[interactionKey].type,
+                          data: interactionsRef.current[interactionKey].data,
+                          priority: 0,
+                          source: NodeType.VIS_UTK,
+                        };
+                      }
+
+                      newObj[knotToLayerDict[knotId]] = {
+                        type: VisInteractionType.POINT,
+                        data: interactionPerGeom,
+                        priority: 1,
+                        source: NodeType.VIS_UTK,
+                      };
+
+                      setInteractions(newObj);
+                    }
+                  },
+                });
+
+                if (grammarInterpreterObj != null) {
+                  grammarInterpreterObj.setServerlessApi(
+                    [],
+                    [],
+                    [],
+                    interactionCallbacks
+                  );
+                }
+
+                setInteractionCallbacks(interactionCallbacks);
+
+                // ServerlessApi.addInteractionCallback(knotId, (interacted: number[], coordsPerGeom: number[]) => {
+                //     if(resolutionModeRef.current != ResolutionTypeUTK.NONE){
+                //         let startingIndex = 0;
+                //         let interactionPerGeom: number[] = [];
+
+                //         for(let j = 0; j < coordsPerGeom.length; j++){
+                //             let nCoords = coordsPerGeom[j];
+
+                //             if(resolutionModeRef.current == ResolutionTypeUTK.PICKING){
+                //                 let objectInteracted = true;
+
+                //                 for(let i = startingIndex; i < startingIndex+nCoords; i++){
+                //                     let value = interacted[i];
+
+                //                     if(value == 0){ // in picking all coordinates of an object must be selected
+                //                         objectInteracted = false;
+                //                         break;
+                //                     }
+                //                 }
+
+                //                 if(objectInteracted)
+                //                     interactionPerGeom.push(j);
+                //             }else if(resolutionModeRef.current == ResolutionTypeUTK.BRUSHING){
+                //                 let objectInteracted = false;
+
+                //                 for(let i = startingIndex; i < startingIndex+nCoords; i++){
+                //                     let value = interacted[i];
+
+                //                     if(value == 1){ // in brushing only one coordinate needs to be selected for the object to be considered interacted with
+                //                         objectInteracted = true;
+                //                         break;
+                //                     }
+                //                 }
+
+                //                 if(objectInteracted)
+                //                     interactionPerGeom.push(j);
+                //             }
+
+                //             startingIndex += nCoords;
+                //         }
+
+                //         let interactionsKeys = Object.keys(interactionsRef.current);
+
+                //         let newObj: any = {};
+                //         for(const interactionKey of interactionsKeys){
+                //             newObj[interactionKey] = {type: interactionsRef.current[interactionKey].type, data: interactionsRef.current[interactionKey].data, priority: 0, source: NodeType.VIS_UTK};
+                //         }
+
+                //         newObj[knotToLayerDict[knotId]] = {type: VisInteractionType.POINT, data: interactionPerGeom, priority: 1, source: NodeType.VIS_UTK}
+
+                //         setInteractions(newObj);
+                //     }
+                // });
+              }
+
+              setServerlessLayers(json.layers);
+              setServerlessJoinedJsons(json.joinedJsons);
+              setServerlessComponents(components);
+            });
+
+          if (grammarInterpreterObj != null) {
+            for (let i = 0; i < geojsons.length; i++) {
+              // let parsedGeojson = JSON.parse(geojsons[i]);
+              let parsedGeojson = geojsons[i];
+              // console.log(parsedGeojson);
+
+              let interactedValues = parsedGeojson.features.map(
+                (feature: any) => {
+                  if (feature.properties.interacted != undefined) {
+                    if (feature.properties.building_id != undefined)
+                      // it is a building layer
+                      return {
+                        interacted: parseInt(feature.properties.interacted),
+                        building_id: feature.properties.building_id,
+                      };
+                    else return parseInt(feature.properties.interacted);
+                  } else {
+                    if (feature.properties.building_id != undefined)
+                      // it is a building layer
+                      return {
+                        interacted: 0,
+                        building_id: feature.properties.building_id,
+                      };
+                    else return 0;
+                  }
+                }
+              );
+              // let interactedValues = [];
+              // for (let i = 0; i < parsedGeojson.interacted.length; i++) {
+              //   let interacted = parsedGeojson.interacted[i];
+              //   let property = parsedGeojson.properties[i];
+
+              //   if (interacted !== undefined) {
+              //     interacted = parseInt(interacted);
+              //   }
+
+              //   if (property.building_id !== undefined) {
+              //     interactedValues.push({
+              //       interacted,
+              //       building_id: property.building_id,
+              //     });
+              //   } else {
+              //     interactedValues.push(interacted);
+              //   }
+              // }
+
+              let layerName = "layer" + i;
+
+              if (
+                parsedGeojson.metadata != undefined &&
+                parsedGeojson.metadata.name != undefined
+              ) {
+                layerName = parsedGeojson.metadata.name;
+              }
+
+              setInteractionArrays({
+                ...interactionArrays,
+                [layerName]: interactedValues,
+              });
+            }
+          }
+
+          // setOutput("success");
+          data.outputCallback(data.nodeId, data.input);
+          await stallDisablePlay();
+        }
+      }
+
+    };
+
+    processData();
+
+>>>>>>> upstream/main
   }, [data.input]);
+
+  async function stallDisablePlay() {
+    function delay(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+    await delay(5000);
+    setDisablePlay(false);
+  }
+
+  // interactions
+  useEffect(() => {
+    data.interactionsCallback(interactions, data.nodeId);
+  }, [interactions]);
 
   const listenerSelection = (event: any) => {
     if (event.target != null) {
@@ -707,7 +1275,7 @@ export function useUTK({ data, code }: { data: any, code: string }) {
 
         let newGrammarMap = {
           ...grammarMapObjRef.current,
-          interactions: oldInteractions.map(() => {
+          interactions: oldInteractions.map((elem: any) => {
             return selectedOption;
           }),
         };
@@ -763,7 +1331,8 @@ export function useUTK({ data, code }: { data: any, code: string }) {
 
   return {
     defaultGrammar,
-    handleCompileGrammar,
+    handleCompileGrammar: compileGrammar,
+    disablePlay,
     customWidgetsCallback,
 
     showLoading,

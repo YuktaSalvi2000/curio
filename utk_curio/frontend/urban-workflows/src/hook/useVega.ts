@@ -1,18 +1,24 @@
 import React, { useEffect, useState } from "react";
-import { BoxType, VisInteractionType } from "../constants";
+import { NodeType, VisInteractionType } from "../constants";
 import { useProvenanceContext } from "../providers/ProvenanceProvider";
 
-import { fetchData, transformToVega } from "../services/api";
-import { Dict } from "vega-lite";
+import { fetchData } from "../services/api";
 import { formatDate, mapTypes } from "../utils/formatters";
 import { parseDataframe, parseGeoDataframe } from "../utils/parsing";
 import { useFlowContext } from "../providers/FlowProvider";
+import { useToastContext } from "../providers/ToastProvider";
 
 // const schema = require('./vega-schema.json');
 const vega = require("vega");
 const lite = require("vega-lite");
 
+if (typeof window !== 'undefined') {
+  (window as any).__curio_vega = vega;
+  (window as any).__curio_vegaLite = lite;
+}
+
 export const useVega = ({ data, code }: { data: any; code: string; }) => {
+  const { showToast } = useToastContext();
   const [interactions, _setInteractions] = useState<any>({}); // {signal: {type: point/interval, data: }} // if type point data contains list of object ids. If type is interval data is an object where each key is an attribute with intervals or lists
 
   const [currentView, _setCurrentView] = useState<any>(null);
@@ -26,6 +32,31 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
   const setInteractions = (data: any) => {
     interactionsRef.current = data;
     _setInteractions(data);
+  };
+
+  const vgsidToIndexRef = React.useRef<Map<number, number>>(new Map());
+
+  // Build a tupleid → original-index map by traversing the scene graph.
+  // vega-lite derives intermediate datasets (e.g. for sorting) whose items have
+  // different tuple IDs from the source "data" items, so we must read IDs from
+  // the actual rendered items. Each item's datum carries __row_index__ (injected
+  // before handing values to Vega) which propagates to derived items via rederive.
+  const buildVgsidMap = (view: any): Map<number, number> => {
+    const map = new Map<number, number>();
+    const traverse = (node: any) => {
+      if (!node) return;
+      if (node.items) {
+        for (const item of node.items) {
+          if (item.datum?.__row_index__ !== undefined) {
+            const id = item.datum['_vgsid_'];
+            if (id !== undefined) map.set(id, item.datum.__row_index__);
+          }
+          traverse(item);
+        }
+      }
+    };
+    try { traverse(view.scenegraph().root); } catch (_) {}
+    return map;
   };
 
   const parseInputData = async (input: any) => {
@@ -66,24 +97,7 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
       }
     }
 
-    // if (parsedInput.dataType == "dataframe") {
-    //   if(parsedInput.path) {
-    //     values = await fetchData(`${parsedInput.path}`);
-    //     values['data'] = parseDataframe(values['data']);
-    //   }
-    //   else {
-    //     values['data'] = parseDataframe(values['data']);
-    //   }
-    // }
-    // else if (parsedInput.dataType == "geodataframe") {
-    //   if(parsedInput.path) {
-    //     values = await fetchData(`${parsedInput.path}`);
-    //     values['data'] = parseGeoDataframe(values['data']);
-    //   }
-    //   else {
-    //     values['data'] = parseGeoDataframe(values['data']);
-    //   }
-    // }
+    values.forEach((v: any, i: number) => { v.__row_index__ = i; });
     return values;
   }
   const processData = async () => {
@@ -102,11 +116,10 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
       .insert(values);
 
     setCurrentView((prevView: any) => {
-      // prevView.change('data', changeset).runAsync().then(() => {
-      //     prevView.setState(currentViewState);
-      // });
-
-      prevView.change("data", changeset).runAsync();
+      prevView.change("data", changeset).runAsync().then(() => {
+        const map = buildVgsidMap(prevView);
+        if (map.size > 0) vgsidToIndexRef.current = map;
+      });
 
       return prevView;
     });
@@ -118,7 +131,7 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
       if (currentView == null) return;
       processData();
     } catch (error: any) {
-      alert(error.message);
+      showToast(error.message, "error");
     }
   }, [data.input]);
 
@@ -135,34 +148,14 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
     ro.observe(document.getElementById("vega" + data.nodeId) as HTMLElement);
   }, []);
 
-  // Maping interaction
-  useEffect(() => {
-    if (Object.keys(interactionsRef.current).length > 0) {
-      if (interactionsRef.current.highlight.type != "UNDETERMINED") {
-        let int_time = formatDate(new Date());
 
-        fetch(`${process.env.BACKEND_URL}/insert_interaction`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            data: {
-              activity_name: BoxType.VIS_VEGA + "-" + data.nodeId,
-              int_time: int_time,
-            },
-          }),
-        });
-      }
-    }
-  }, [interactions]);
 
   useEffect(() => {
     data.interactionsCallback(interactions, data.nodeId);
   }, [interactions]);
 
   const { workflowNameRef } = useFlowContext();
-  const { boxExecProv } = useProvenanceContext();
+  const { nodeExecProv } = useProvenanceContext();
   const handleCompileGrammar = async (spec: string) => {
     let startTime = formatDate(new Date());
 
@@ -194,11 +187,11 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
       dfStringOUT = JSON.stringify(df);
     }
 
-    boxExecProv(
+    nodeExecProv(
       startTime,
       endTime,
       workflowNameRef.current,
-      BoxType.VIS_VEGA + "-" + data.nodeId,
+      NodeType.VIS_VEGA + "-" + data.nodeId,
       mapTypes(typesInput),
       mapTypes(typesOuput),
       code,
@@ -206,17 +199,6 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
       dfStringOUT
     );
 
-    await fetch(`${process.env.BACKEND_URL}/insert_visualization`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        data: {
-          activity_name: BoxType.VIS_VEGA + "-" + data.nodeId,
-        },
-      }),
-    });
   };
 
   const compileGrammar = async (specObj: any) => {
@@ -228,7 +210,6 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
     // specObj["autosize"] = {type: "fit", contains: "padding", resize: true};
 
     let vegaspec = lite.compile(specObj).spec;
-    console.log(specObj);
 
     let view = new vega.View(vega.parse(vegaspec))
       .logLevel(vega.Warn) // set view logging level
@@ -237,6 +218,9 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
       .hover();
 
     view.runAsync().then(() => {
+      const map = buildVgsidMap(view);
+      if (map.size > 0) vgsidToIndexRef.current = map;
+
       const container = document.getElementById("vega" + data.nodeId);
       const parentContainer = container?.parentElement;
       if (parentContainer) {
@@ -263,7 +247,7 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
           [parsedAttr[0]]: {
             type: VisInteractionType.UNDETERMINED,
             data: [],
-            source: BoxType.VIS_VEGA,
+            source: NodeType.VIS_VEGA,
           },
         });
 
@@ -274,6 +258,7 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
           let interactedElementsPoint: number[] = []; // id of the elements interacted with point/hover
 
           if (signalAttributes.length == 0) {
+            // no interaction
             let previousValue = interactionsRef.current[parsedAttr[0]];
 
             let type = VisInteractionType.UNDETERMINED;
@@ -294,7 +279,7 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
                 type: interactionsRef.current[interactionKey].type,
                 data: interactionsRef.current[interactionKey].data,
                 priority: 0,
-                source: BoxType.VIS_VEGA,
+                source: NodeType.VIS_VEGA,
               };
             }
 
@@ -302,14 +287,15 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
               type: type,
               data: data,
               priority: 1,
-              source: BoxType.VIS_VEGA,
+              source: NodeType.VIS_VEGA,
             };
 
             setInteractions(newObj);
           } else if (signalAttributes.includes("_vgsid_")) {
             // point/hover
             for (const elem of value._vgsid_) {
-              interactedElementsPoint.push((elem - 1) % values.length); // index of elements increase every time dataset is changed
+              const idx = vgsidToIndexRef.current.get(elem);
+              if (idx !== undefined) interactedElementsPoint.push(idx);
             }
 
             let interactionsKeys = Object.keys(interactionsRef.current);
@@ -327,7 +313,7 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
               type: VisInteractionType.POINT,
               data: interactedElementsPoint,
               priority: 1,
-              source: BoxType.VIS_VEGA,
+              source: NodeType.VIS_VEGA,
             };
 
             setInteractions(newObj);
@@ -349,7 +335,7 @@ export const useVega = ({ data, code }: { data: any; code: string; }) => {
               type: VisInteractionType.INTERVAL,
               data: { ...value },
               priority: 1,
-              source: BoxType.VIS_VEGA,
+              source: NodeType.VIS_VEGA,
             };
 
             setInteractions(newObj);

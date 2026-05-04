@@ -1,24 +1,17 @@
-import React, { createContext, useContext, ReactNode, useState } from "react";
-import { BoxType } from "../constants";
+import React, { createContext, useContext, ReactNode, useState, useRef } from "react";
+
+export interface NodeExecRecord {
+    id: number;
+    parentId: number | null;
+    code: string;
+    inputs: string[];
+    outputs: string[];
+    startTime: string;
+    endTime: string;
+}
 
 interface ProvenanceContextProps {
-    addUser: (user_name: string, user_type: string, user_IP: string) => void;
-    addWorkflow: (workflow_name: string) => Promise<void>;
-    newBox: (workflow_name: string, activity_name: string) => void;
-    deleteBox: (workflow_name: string, activity_name: string) => void;
-    newConnection: (
-        workflow_name: string,
-        sourceNodeId: string,
-        sourceNodeType: BoxType,
-        targetNodeId: string,
-        targetNodeType: BoxType
-    ) => void;
-    deleteConnection: (
-        workflow_name: string,
-        targetNodeId: string,
-        targetNodeType: BoxType
-    ) => void;
-    boxExecProv: (
+    nodeExecProv: (
         activityexec_start_time: string,
         activityexec_end_time: string,
         workflow_name: string,
@@ -30,263 +23,99 @@ interface ProvenanceContextProps {
         outputData?: string,
         interaction?: boolean
     ) => void;
-    provenanceGraphBoxesRef: any;
-    truncateDB: () => void;
+    provenanceGraphNodes: Record<string, NodeExecRecord[]>;
+    provenanceGraphNodesRef: React.MutableRefObject<Record<string, NodeExecRecord[]>>;
+    selectedParentExecRef: React.MutableRefObject<Record<string, number | null>>;
+    setSelectedExec: (nodeId: string, execId: number | null) => void;
+    loadNodeProvenance: (data: Record<string, NodeExecRecord[]>) => void;
+    getAllNodeProvenance: () => Record<string, NodeExecRecord[]>;
 }
 
 export const ProvenanceContext = createContext<ProvenanceContextProps>({
-    addUser: () => {},
-    addWorkflow: () => new Promise((resolve, reject) => {resolve()}),
-    newBox: () => {},
-    deleteBox: () => {},
-    newConnection: () => {},
-    deleteConnection: () => {},
-    boxExecProv: () => {},
-    provenanceGraphBoxesRef: {},
-    truncateDB: () => {},
+    nodeExecProv: () => {},
+    provenanceGraphNodes: {},
+    provenanceGraphNodesRef: { current: {} },
+    selectedParentExecRef: { current: {} },
+    setSelectedExec: () => {},
+    loadNodeProvenance: () => {},
+    getAllNodeProvenance: () => ({}),
 });
 
 const ProvenanceProvider = ({ children }: { children: ReactNode }) => {
-    const [provenanceGraphBoxes, _setProvenanceGraphBoxes] = useState<any>({}); // workflow_name -> activity_name -> nodes[]
-    const provenanceGraphBoxesRef = React.useRef(provenanceGraphBoxes);
-    const setProvenanceGraphBoxes = (data: any) => {
-        provenanceGraphBoxesRef.current = data;
-        _setProvenanceGraphBoxes(data);
+    const [provenanceGraphNodes, _setProvenanceGraphNodes] = useState<Record<string, NodeExecRecord[]>>({});
+    const provenanceGraphNodesRef = useRef<Record<string, NodeExecRecord[]>>(provenanceGraphNodes);
+    const setProvenanceGraphNodes = (data: Record<string, NodeExecRecord[]>) => {
+        provenanceGraphNodesRef.current = data;
+        _setProvenanceGraphNodes(data);
     };
 
-    const addUser = (user_name: string, user_type: string, user_IP: string) => {
-        fetch(process.env.BACKEND_URL + "/saveUserProv", {
-            method: "POST",
-            body: JSON.stringify({
-                user: {
-                    user_name,
-                    user_type,
-                    user_IP,
-                },
-            }),
-            headers: {
-                "Content-type": "application/json; charset=UTF-8",
-            },
-        });
-    };
+    const execIdCounterRef = useRef<number>(1);
+    const selectedParentExecRef = useRef<Record<string, number | null>>({});
 
-    const newBox = (workflow_name: string, activity_name: string) => {
-        console.log("workflow_name", workflow_name);
-        console.log("activity_name", activity_name);
-
-        fetch(process.env.BACKEND_URL + "/newBoxProv", {
-            method: "POST",
-            body: JSON.stringify({
-                data: {
-                    workflow_name,
-                    activity_name,
-                },
-            }),
-            headers: {
-                "Content-type": "application/json; charset=UTF-8",
-            },
-        });
-    };
-
-    const deleteBox = (workflow_name: string, activity_name: string) => {
-        fetch(process.env.BACKEND_URL + "/deleteBoxProv", {
-            method: "POST",
-            body: JSON.stringify({
-                data: {
-                    workflow_name,
-                    activity_name,
-                },
-            }),
-            headers: {
-                "Content-type": "application/json; charset=UTF-8",
-            },
-        });
-    };
-
-    const addWorkflow = async (workflow_name: string) => {
-        await fetch(process.env.BACKEND_URL + "/truncateDBProv", {
-            method: "GET",
-        });
-
-        await fetch(process.env.BACKEND_URL + "/saveWorkflowProv", {
-            method: "POST",
-            body: JSON.stringify({
-                workflow: workflow_name,
-            }),
-            headers: {
-                "Content-type": "application/json; charset=UTF-8",
-            },
-        });
-    };
-
-    const newConnection = (
-        workflow_name: string,
-        sourceNodeId: string,
-        sourceNodeType: BoxType,
-        targetNodeId: string,
-        targetNodeType: BoxType
-    ) => {
-        if (!workflow_name || !sourceNodeId || !sourceNodeType || !targetNodeId || !targetNodeType) {
-            console.error("[newConnection] Missing or invalid data in payload", {
-                workflow_name, sourceNodeId, sourceNodeType, targetNodeId, targetNodeType,
-            });
-            return;
-        }
-
-        fetch(process.env.BACKEND_URL + "/newConnectionProv", {
-            method: "POST",
-            body: JSON.stringify({
-                data: {
-                    workflow_name,
-                    sourceNodeId,
-                    sourceNodeType,
-                    targetNodeId,
-                    targetNodeType,
-                },
-            }),
-            headers: {
-                "Content-type": "application/json; charset=UTF-8",
-            },
-        });
-    };
-
-    const deleteConnection = (
-        workflow_name: string,
-        targetNodeId: string,
-        targetNodeType: BoxType
-    ) => {
-        fetch(process.env.BACKEND_URL + "/deleteConnectionProv", {
-            method: "POST",
-            body: JSON.stringify({
-                data: {
-                    workflow_name,
-                    targetNodeId,
-                    targetNodeType,
-                },
-            }),
-            headers: {
-                "Content-type": "application/json; charset=UTF-8",
-            },
-        });
-    };
-
-    const boxExecProv = (
+    const nodeExecProv = (
         activityexec_start_time: string,
         activityexec_end_time: string,
-        workflow_name: string,
+        _workflow_name: string,
         activity_name: string,
         types_input: any,
         types_output: any,
         activity_source_code: string,
-        inputData: string = "",
-        outputData: string = "",
-        interaction: boolean = false
+        _inputData: string = "",
+        _outputData: string = "",
+        _interaction: boolean = false
     ) => {
-        fetch(process.env.BACKEND_URL + "/boxExecProv", {
-            method: "POST",
-            body: JSON.stringify({
-                data: {
-                    activityexec_start_time,
-                    activityexec_end_time,
-                    workflow_name,
-                    activity_name,
-                    types_input,
-                    types_output,
-                    activity_source_code,
-                    inputData,
-                    outputData,
-                    interaction
-                },
-            }),
-            headers: {
-                "Content-type": "application/json; charset=UTF-8",
-            },
-        }).then((value: any) => {
-            getBoxGraph(workflow_name, activity_name);
-        });
+        // Extract plain nodeId from activity_name (e.g., "DATA_LOADING-node-1" -> "node-1")
+        const dashIdx = activity_name.indexOf("-");
+        const nodeId = dashIdx >= 0 ? activity_name.slice(dashIdx + 1) : activity_name;
+
+        const parentId = selectedParentExecRef.current[nodeId] ?? null;
+        const newId = execIdCounterRef.current++;
+
+        const record: NodeExecRecord = {
+            id: newId,
+            parentId,
+            code: activity_source_code,
+            inputs: Array.isArray(types_input) ? types_input : [],
+            outputs: Array.isArray(types_output) ? types_output : [],
+            startTime: activityexec_start_time,
+            endTime: activityexec_end_time,
+        };
+
+        const next = { ...provenanceGraphNodesRef.current };
+        next[nodeId] = [...(next[nodeId] || []), record];
+        setProvenanceGraphNodes(next);
+
+        selectedParentExecRef.current[nodeId] = newId;
     };
 
-    const getBoxGraph = (workflow_name: string, activity_name: string) => {
-        // Call after writing the running provenance in the database
-
-        fetch(process.env.BACKEND_URL + "/getBoxGraph", {
-            method: "POST",
-            body: JSON.stringify({
-                data: {
-                    workflow_name,
-                    activity_name,
-                },
-            }),
-            headers: {
-                "Content-type": "application/json; charset=UTF-8",
-            },
-        })
-            .then((response) => response.json())
-            .then((json: any) => {
-                let newProvenanceGraphs: any = {};
-                let added = false;
-
-                let workflows = Object.keys(provenanceGraphBoxesRef.current);
-
-                for (const workflow of workflows) {
-                    if (newProvenanceGraphs[workflow] == undefined)
-                        newProvenanceGraphs[workflow] = {};
-
-                    let activities = Object.keys(
-                        provenanceGraphBoxesRef.current[workflow] || {}
-                    );
-
-                    for (const activity of activities) {
-                        if (
-                            workflow == workflow_name &&
-                            activity == activity_name
-                        ) {
-                            newProvenanceGraphs[workflow][activity] =
-                                json["graph"];
-                            added = true;
-                        } else {
-                            // TODO: replicate array of objects
-                            newProvenanceGraphs[workflow][activity] =
-                                provenanceGraphBoxesRef.current[workflow][
-                                    activity
-                                ].map((obj: any) => {
-                                    return { ...obj };
-                                });
-                        }
-                    }
-                }
-
-                if (!added) {
-                    if (newProvenanceGraphs[workflow_name] == undefined)
-                        newProvenanceGraphs[workflow_name] = {};
-
-                    newProvenanceGraphs[workflow_name][activity_name] =
-                        json["graph"];
-                }
-
-                setProvenanceGraphBoxes(newProvenanceGraphs);
-            });
+    const setSelectedExec = (nodeId: string, execId: number | null) => {
+        selectedParentExecRef.current[nodeId] = execId;
     };
 
-    // for test purposes (TODO: temporary)
-    const truncateDB = () => {
-        fetch(process.env.BACKEND_URL + "/truncateDBProv", {
-            method: "GET",
+    const loadNodeProvenance = (data: Record<string, NodeExecRecord[]>) => {
+        if (!data) return;
+        let maxId = 0;
+        Object.values(data).flat().forEach((r: NodeExecRecord) => {
+            if (r.id > maxId) maxId = r.id;
         });
+        execIdCounterRef.current = maxId + 1;
+        setProvenanceGraphNodes(data);
+    };
+
+    const getAllNodeProvenance = (): Record<string, NodeExecRecord[]> => {
+        return provenanceGraphNodesRef.current;
     };
 
     return (
         <ProvenanceContext.Provider
             value={{
-                addUser,
-                addWorkflow,
-                newBox,
-                truncateDB,
-                deleteBox,
-                newConnection,
-                boxExecProv,
-                provenanceGraphBoxesRef,
-                deleteConnection,
+                nodeExecProv,
+                provenanceGraphNodes,
+                provenanceGraphNodesRef,
+                selectedParentExecRef,
+                setSelectedExec,
+                loadNodeProvenance,
+                getAllNodeProvenance,
             }}
         >
             {children}

@@ -1,17 +1,13 @@
 import React from "react";
-
-import "bootstrap/dist/css/bootstrap.min.css";
-
-import Button from "react-bootstrap/Button";
-import Modal from "react-bootstrap/Modal";
-import { AccessLevelType, BoxType } from "../constants";
+import ModalShell from "./ModalShell";
+import content from "./modal-content.module.css";
+import { AccessLevelType, NodeType } from "../constants";
 import { ConnectionValidator } from "../ConnectionValidator";
 import { getNodeDescriptor } from "../registry";
-import "./Box.css"
 
 type DescriptionModalProps = {
     nodeId: string;
-    boxType: BoxType;
+    nodeType: NodeType;
     name?: string;
     description?: any;
     accessLevel?: AccessLevelType;
@@ -22,7 +18,7 @@ type DescriptionModalProps = {
 
 function DescriptionModal({
     nodeId,
-    boxType,
+    nodeType,
     name,
     description,
     accessLevel,
@@ -30,12 +26,10 @@ function DescriptionModal({
     handleClose,
     custom,
 }: DescriptionModalProps) {
-    const closeModal = () => {
-        handleClose();
-    };
+    if (!show) return null;
 
-    const getTypeDescription = (boxType: BoxType) => {
-        const descriptor = getNodeDescriptor(boxType);
+    const getTypeDescription = (nodeType: NodeType) => {
+        const descriptor = getNodeDescriptor(nodeType);
         let linesText: string[] = [];
 
         const inputCardinality = descriptor.inputPorts.length > 0
@@ -43,10 +37,10 @@ function DescriptionModal({
             : 'N/A';
         linesText.push("Input number: " + inputCardinality);
 
-        if (ConnectionValidator._inputTypesSupported[boxType]?.length > 0)
+        if (ConnectionValidator._inputTypesSupported[nodeType]?.length > 0)
             linesText.push(
                 "Supported input types: " +
-                    ConnectionValidator._inputTypesSupported[boxType].join(", ")
+                    ConnectionValidator._inputTypesSupported[nodeType].join(", ")
             );
 
         const outputCardinality = descriptor.outputPorts.length > 0
@@ -54,10 +48,10 @@ function DescriptionModal({
             : 'N/A';
         linesText.push("Output number: " + outputCardinality);
 
-        if (ConnectionValidator._outputTypesSupported[boxType]?.length > 0)
+        if (ConnectionValidator._outputTypesSupported[nodeType]?.length > 0)
             linesText.push(
                 "Supported output types: " +
-                    ConnectionValidator._outputTypesSupported[boxType].join(", ")
+                    ConnectionValidator._outputTypesSupported[nodeType].join(", ")
             );
 
         if (descriptor.hasCode) {
@@ -79,52 +73,35 @@ function DescriptionModal({
         return linesText;
     };
 
-    const boxLabel = (() => {
-        try { return getNodeDescriptor(boxType).label; }
-        catch { return boxType; }
+    const nodeLabel = (() => {
+        try { return getNodeDescriptor(nodeType).label; }
+        catch { return nodeType; }
     })();
 
     return (
-        <>
-            <Modal show={show} onHide={closeModal}>
-                <Modal.Header closeButton>
-                    <Modal.Title>Description</Modal.Title>
-                </Modal.Header>
-                <Modal.Body>
-                    <p>Box Type: {boxLabel}</p>
+        <ModalShell onClose={handleClose}>
+            <div className={content.content}>
+                <h2 className={content.title}>Description</h2>
+                <div>
+                    <p>Node Type: {nodeLabel}</p>
                     {custom != undefined && custom ? (
                         <p>Custom template: {name}</p>
                     ) : custom != undefined && !custom ? (
                         <p>Default template: {name}</p>
                     ) : null}
                     {description != undefined ? <p>{description}</p> : null}
-                    {accessLevel != undefined ? (
-                        <p>Access Level: {accessLevel}</p>
-                    ) : null}
-                    {getTypeDescription(boxType).map(
-                        (line: string, index: number) => {
-                            return (
-                                <p
-                                    key={
-                                        "description_modal_" +
-                                        nodeId +
-                                        "_" +
-                                        index
-                                    }
-                                >
-                                    {line}
-                                </p>
-                            );
-                        }
-                    )}
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button variant="primary" onClick={closeModal}>
+                    {accessLevel != undefined ? <p>Access Level: {accessLevel}</p> : null}
+                    {getTypeDescription(nodeType).map((line: string, index: number) => (
+                        <p key={"description_modal_" + nodeId + "_" + index}>{line}</p>
+                    ))}
+                </div>
+                <div className={content.buttonRow}>
+                    <button className={content.primaryButton} onClick={handleClose}>
                         Close
-                    </Button>
-                </Modal.Footer>
-            </Modal>
-        </>
+                    </button>
+                </div>
+            </div>
+        </ModalShell>
     );
 }
 

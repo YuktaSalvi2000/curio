@@ -2,10 +2,13 @@
   "compilerOptions": {
     "target": "es2021",
     "module": "esnext",
+<<<<<<< HEAD
     "moduleResolution": "bundler",
 
     "jsx": "react-jsx",
 
+=======
+>>>>>>> upstream/main
     "allowJs": true,
     "strict": true,
 

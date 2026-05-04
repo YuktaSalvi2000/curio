@@ -11,8 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt curio.py ./
+COPY scripts/ scripts/
 COPY templates/ templates/
-COPY tests/ tests/
+COPY docs/examples/ docs/examples/
 COPY utk_curio/ utk_curio/
 COPY utk_curio/sandbox/utk-0.8.9.tar.gz /app/utk_curio/sandbox/utk-0.8.9.tar.gz
 
@@ -25,6 +26,18 @@ RUN pip install --upgrade pip setuptools wheel && \
 FROM node:20-bookworm-slim AS frontend_builder
 WORKDIR /src
 COPY utk_curio/frontend/ /src/utk_curio/frontend/
+
+# BACKEND_URL and PUBLIC_PATH are baked into the JS bundle at build time.
+# Passed in via docker compose build args (see docker-compose.yml).
+# PUBLIC_PATH is also exported as ENV so webpack.config.js (which runs in
+# Node before dotenv-webpack populates process.env from .env) can read it.
+ARG BACKEND_URL
+ARG PUBLIC_PATH
+ENV PUBLIC_PATH=$PUBLIC_PATH
+RUN if [ -n "$BACKEND_URL" ]; then \
+      sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$BACKEND_URL|" \
+        /src/utk_curio/frontend/urban-workflows/.env; \
+    fi
 
 WORKDIR /src/utk_curio/frontend/utk-workflow/src/utk-ts
 RUN npm install && npm run build

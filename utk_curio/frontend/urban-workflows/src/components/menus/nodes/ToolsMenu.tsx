@@ -1,11 +1,14 @@
-import React from "react";
-import { BoxType } from "../../../constants";
+import React, { memo } from "react";
+import { NodeType } from "../../../constants";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faForwardStep } from "@fortawesome/free-solid-svg-icons";
 import { Tooltip, OverlayTrigger } from "react-bootstrap";
 import { getPaletteNodeTypes } from "../../../registry";
+import { useFlowContext } from "../../../providers/FlowProvider";
 import styles from "./ToolsMenu.module.css";
 
-function DraggableTool({ boxType, icon, tooltip, tutorialID}: { boxType: BoxType; icon: any; tooltip: string; tutorialID?: string }) {
+
+const DraggableTool = memo(function DraggableTool({ nodeType, icon, tooltip, tutorialID}: { nodeType: NodeType; icon: any; tooltip: string; tutorialID?: string }) {
     return (
         <OverlayTrigger
             placement="right"
@@ -17,7 +20,7 @@ function DraggableTool({ boxType, icon, tooltip, tutorialID}: { boxType: BoxType
                 className={styles.optionStyle}
                 draggable
                 onDragStart={(event) => {
-                    event.dataTransfer.setData("application/reactflow", boxType);
+                    event.dataTransfer.setData("application/reactflow", nodeType);
                     event.dataTransfer.effectAllowed = "move";
                 }}
             >
@@ -25,26 +28,36 @@ function DraggableTool({ boxType, icon, tooltip, tutorialID}: { boxType: BoxType
             </div>
         </OverlayTrigger>
     );
-}
+});
 
-export default function ToolsMenu() {
+const ToolsMenu = memo(function ToolsMenu() {
     const paletteTypes = getPaletteNodeTypes();
+    const { playAllNodes } = useFlowContext();
     return (
-        <div>
+        <div className={styles.wrapperStyle}>
             <div className={styles.containerStyle}>
                 {paletteTypes.map(desc => (
                     <DraggableTool
                         key={desc.id}
-                        boxType={desc.id}
+                        nodeType={desc.id}
                         icon={desc.icon}
                         tooltip={desc.label}
                         tutorialID={desc.tutorialId}
                     />
                 ))}
             </div>
+            <button
+                className={styles.playAllButton}
+                onClick={playAllNodes}
+                title="Run all nodes"
+            >
+                <FontAwesomeIcon icon={faForwardStep} />
+            </button>
         </div>
     );
-}
+});
+
+export default ToolsMenu;
 
 const overlayTriggerProps = {
     show: 120,

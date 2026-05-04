@@ -1,6 +1,7 @@
 from flask import request, abort, jsonify
 import json
-import subprocess
+import re
+import sys
 import geopandas as gpd
 import pandas as pd
 import utk
@@ -11,6 +12,14 @@ import mmap
 from pathlib import Path
 
 from shapely import wkt
+
+from utk_curio.sandbox.app.worker import _worker_init, execute_code, execute_js_code
+from utk_curio.sandbox.util.parsers import load_from_duckdb, parseOutput
+
+_VALID_PACKAGE_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._\-]*(\[[\w,\s]+\])?(===?|~=|!=|>=?|<=?[a-zA-Z0-9._\-*]+)?$')
+
+# Pre-load heavy libraries once at sandbox startup so every /exec call is fast.
+_worker_init()
 
 DATA_DIR = "./data"
 
@@ -28,6 +37,29 @@ def root():
 @app.route('/live', methods=['GET'])
 def live():
     return 'Sandbox is live.'
+
+@app.route('/get', methods=['GET'])
+def get_artifact():
+    import pandas as _pd
+    art_id = request.args.get('fileName')
+    if not art_id:
+        abort(400, "fileName is required")
+    session_id = request.args.get('sessionId') or None
+    max_rows_param = request.args.get('maxRows')
+    raw = load_from_duckdb(art_id, session_id=session_id)
+    total_rows = None
+    if max_rows_param is not None:
+        max_rows = int(max_rows_param)
+        if isinstance(raw, _pd.DataFrame):
+            total_rows = len(raw)
+            raw = raw.head(max_rows)
+    data = parseOutput(raw)
+    data['filename'] = art_id
+    if total_rows is not None:
+        data['preview'] = True
+        data['previewRows'] = min(max_rows, total_rows)
+        data['totalRows'] = total_rows
+    return jsonify(data)
 
 @app.route('/cwd')
 def cwd():
@@ -50,9 +82,15 @@ def upload_file():
     if file.filename == '':
         return 'No selected file'
 
-    file.save(request.form['fileName'])
+    launch_dir = os.environ.get("CURIO_LAUNCH_CWD", os.getcwd())
+    data_dir = Path(os.path.join(launch_dir, "data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
 
-    return file.filename
+    filename = os.path.basename(request.form.get('fileName', file.filename))
+    save_path = data_dir / filename
+    file.save(save_path)
+
+    return str(save_path)
 
 @app.route('/datasets', methods=['GET'])
 def list_datasets():
@@ -85,62 +123,79 @@ def list_datasets():
 
     return jsonify(files)
 
+@app.route('/install', methods=['POST'])
+def install_packages():
+    import subprocess
+    packages = request.json.get('packages', [])
+    if not packages:
+        abort(400, "No packages specified")
+
+    results = []
+    for package in packages:
+        package = package.strip()
+        if not package:
+            continue
+        if not _VALID_PACKAGE_RE.match(package):
+            results.append({"package": package, "success": False, "stdout": "", "stderr": f"Invalid package name: {package}"})
+            continue
+        result = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', package],
+            capture_output=True, text=True
+        )
+        results.append({
+            "package": package,
+            "success": result.returncode == 0,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        })
+
+    return jsonify({"results": results})
+
 @app.route('/exec', methods=['POST'])
 # @cache.cached(make_cache_key=make_key)
 def exec():
     import time
-    start_time = time.time()
-    app.logger.info(f'/exec: Request begin')
+    import sys
+    t0 = time.perf_counter()
 
-    # print(request.json['code'], flush=True)
-
-    if(request.json['code'] == None):
+    if request.json.get('code') is None:
         abort(400, "Code was not included in the post request")
 
-    # Load default python wrapper code
-    full_code = open('sandbox/python_wrapper.txt', 'r').read()
+    code       = request.json['code']
+    file_path  = request.json['file_path']
+    node_type  = request.json['nodeType']
+    data_type  = request.json['dataType']
+    session_id = request.json.get('session_id') or None
+    launch_dir = os.environ.get('CURIO_LAUNCH_CWD', os.getcwd())
 
-    # Set path to be relative to the place where curio is called
-    original_dir = os.getcwd()
-    launch_dir = os.environ.get("CURIO_LAUNCH_CWD", os.getcwd())
-    os.chdir(launch_dir)
+    print(f"[sandbox /exec] received  node={node_type}", file=sys.stderr, flush=True)
+    result = execute_code(code, str(file_path), str(node_type), str(data_type), launch_dir, session_id=session_id)
 
-    code = request.json['code']
-    file_path = request.json['file_path']
-    boxType = request.json['boxType']
-    dataType = request.json['dataType']
-    
-    full_code = full_code.replace('{userCode}', str(code))
-    full_code = full_code.replace('{filePath}', str(file_path))
-    full_code = full_code.replace('{boxType}', str(boxType))
-    full_code = full_code.replace('{dataType}', str(dataType))
+    print(f"[sandbox /exec] finished  total={time.perf_counter()-t0:.3f}s  node={node_type}", file=sys.stderr, flush=True)
+    return jsonify(result)
 
-    command = ['python', '-']
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = process.communicate(full_code)
+@app.route('/execJs', methods=['POST'])
+def exec_js():
+    import time
+    import sys
+    t0 = time.perf_counter()
 
-    stdout = [item for item in stdout.split("\n") if item != '']
+    if request.json.get('code') is None:
+        abort(400, "Code was not included in the post request")
 
-    if(len(stdout) > 0):
-        output = json.loads(stdout[-1])
-    else:
-        output = {}
-        output['path'] = ""
-        output['dataType'] = "str"
+    code       = request.json['code']
+    file_path  = request.json['file_path']
+    node_type  = request.json['nodeType']
+    data_type  = request.json['dataType']
+    session_id = request.json.get('session_id') or None
+    launch_dir = os.environ.get('CURIO_LAUNCH_CWD', os.getcwd())
 
-    jsonOutput = {
-        "stdout": stdout[0:-1], # just get prints, remove output itself
-        "stderr": stderr,
-        "output": output
-    }
+    print(f"[sandbox /execJs] received  node={node_type}", file=sys.stderr, flush=True)
+    result = execute_js_code(code, str(file_path), str(node_type), str(data_type), launch_dir, session_id=session_id)
 
-    # print("----------", jsonOutput, flush=True)
+    print(f"[sandbox /execJs] finished  total={time.perf_counter()-t0:.3f}s  node={node_type}", file=sys.stderr, flush=True)
+    return jsonify(result)
 
-    app.logger.info(f'/exec: Request end in time: {(time.time() - start_time) / 60} mins')
-
-    os.chdir(original_dir)
-
-    return jsonify(jsonOutput)
 
 @app.route('/toLayers', methods=['POST'])
 def toLayers():

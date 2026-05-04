@@ -3,10 +3,9 @@ import CSS from "csstype";
 import { Dropdown, Spinner } from "react-bootstrap";
 
 import { useFlowContext } from "../providers/FlowProvider";
-import { Box, NodeRemoveChange } from "reactflow";
+import { NodeRemoveChange, useReactFlow } from "reactflow";
 
 import { CommentsList, IComment } from "./comments/CommentsList";
-import { useRightClickMenu } from "../hook/useRightClickMenu";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -16,6 +15,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { useUserContext } from "../providers/UserProvider";
 import { useLLMContext } from "../providers/LLMProvider";
+import { useToastContext } from "../providers/ToastProvider";
 import { ConnectionValidator } from "../ConnectionValidator";
 import Col from "react-bootstrap/Col";
 import Nav from "react-bootstrap/Nav";
@@ -48,15 +48,16 @@ import {
     faXmark,
     faAnglesUp
 } from "@fortawesome/free-solid-svg-icons";
-import { AccessLevelType, BoxType, SupportedType } from "../constants";
+import { AccessLevelType, NodeType, SupportedType } from "../constants";
 import { getNodeDescriptor } from "../registry";
 import "./styles.css";
 import { Template, useTemplateContext } from "../providers/TemplateProvider";
 import { useCode } from "../hook/useCode";
 import { TrillGenerator } from "TrillGenerator";
+import { ICodeData } from "types";
 
-// Box Container
-export const BoxContainer = ({
+// Node Container
+export const NodeContainer = ({
     data,
     children,
     nodeId,
@@ -69,8 +70,8 @@ export const BoxContainer = ({
     setOutputCallback,
     sendCodeToWidgets,
     output,
-    boxWidth,
-    boxHeight,
+    nodeWidth,
+    nodeHeight,
     noContent,
     setTemplateConfig,
     disableComments = false,
@@ -90,9 +91,9 @@ export const BoxContainer = ({
     user?: any;
     setOutputCallback: any;
     sendCodeToWidgets?: any;
-    output?: { code: string; content: string };
-    boxWidth?: number;
-    boxHeight?: number;
+    output?: ICodeData;
+    nodeWidth?: number;
+    nodeHeight?: number;
     noContent?: boolean;
     setTemplateConfig?: any;
     disableComments?: boolean;
@@ -101,46 +102,64 @@ export const BoxContainer = ({
     isLoading?: boolean;
     handleType?: string;
 }) => {
-    const { 
-        nodes, 
-        edges, 
-        workflowNameRef, 
-        applyRemoveChanges, 
+    const { showToast } = useToastContext();
+    const {
+        nodes,
+        edges,
+        workflowNameRef,
+        applyRemoveChanges,
         setPinForDashboard,
+        dashboardPins,
         allMinimized,
         setExpandStatus,
         updateDataNode,
         updateDefaultCode,
         workflowGoal,
-        acceptSuggestion
+        acceptSuggestion,
+        nodeExecStatus,
+        playNodesUpTo,
+        dashboardOn,
+        dashboardLocked,
     } = useFlowContext();
+    const { getNodes, getEdges } = useReactFlow();
     const { getTemplates, deleteTemplate, fetchTemplates } = useTemplateContext();
     const { createCodeNode, loadTrill } = useCode();
     const [showComments, setShowComments] = useState(false);
     const [comments, setComments] = useState<IComment[]>([]);
     const [goal, setGoal] = useState(data.goal);
-    const [pinnedToDashboard, setPinnedToDashboard] = useState<boolean>(false);
+    const [pinnedToDashboard, setPinnedToDashboard] = useState<boolean>(!!dashboardPins[nodeId]);
     const [expectedInputType, setExpectedInputType] = useState(data.in);
     const [expectedOutputType, setExpectedOutputType] = useState(data.out);
     const [isConnectionLeftOpen, setIsConnectionLeftOpen] = useState(false);
     const [isConnectionRightOpen, setIsConnectionRightOpen] = useState(false);
     const [showWarnings, setShowWarnings] = useState<boolean>(false);
     const [isSubtasksOpen, setIsSubtasksOpen] = useState(false);
-    const [currentBoxWidth, setCurrentBoxWidth] = useState<number | undefined>(
-        boxWidth
+    const [currentNodeWidth, setCurrentNodeWidth] = useState<number | undefined>(
+        nodeWidth
     );
-    const [currentBoxHeight, setCurrentBoxHeight] = useState<
+    const [currentNodeHeight, setCurrentNodeHeight] = useState<
         number | undefined
-    >(boxHeight);
-    const { showMenu, menuPosition, onContextMenu } = useRightClickMenu();
+    >(nodeHeight);
     const [minimized, setMinimized] = useState(
-        data.nodeType == BoxType.MERGE_FLOW
+        data.nodeType == NodeType.MERGE_FLOW
     );
-    const { openAIRequest, setCurrentEventPipeline, AIModeRef } = useLLMContext();
+    const { llmRequest, setCurrentEventPipeline, AIModeRef } = useLLMContext();
 
     useEffect(() => {
         setGoal(data.goal);
     }, [data.goal])
+
+    useEffect(() => {
+        if (nodeWidth !== undefined) {
+            setCurrentNodeWidth(nodeWidth);
+        }
+    }, [nodeWidth]);
+
+    useEffect(() => {
+        if (nodeHeight !== undefined) {
+            setCurrentNodeHeight(nodeHeight);
+        }
+    }, [nodeHeight]);
 
     useEffect(() => {
 
@@ -177,7 +196,7 @@ export const BoxContainer = ({
     }, [data.output, data.input])
 
     useEffect(() => {
-        if(data.nodeType != BoxType.MERGE_FLOW){
+        if(data.nodeType != NodeType.MERGE_FLOW){
             if(allMinimized > 0){
                 setMinimized(true);
             }else{
@@ -187,21 +206,21 @@ export const BoxContainer = ({
     }, [allMinimized])
 
     useEffect(() => {
-        if (data.nodeType != BoxType.MERGE_FLOW) {
+        if (data.nodeType != NodeType.MERGE_FLOW) {
             if (minimized) {
-                setCurrentBoxWidth(70);
-                setCurrentBoxHeight(40);
+                setCurrentNodeWidth(70);
+                setCurrentNodeHeight(40);
             } else {
-                if (boxWidth == undefined) {
-                    setCurrentBoxWidth(525);
+                if (nodeWidth == undefined) {
+                    setCurrentNodeWidth(525);
                 } else {
-                    setCurrentBoxWidth(boxWidth);
+                    setCurrentNodeWidth(nodeWidth);
                 }
 
-                if (boxHeight == undefined) {
-                    setCurrentBoxHeight(267);
+                if (nodeHeight == undefined) {
+                    setCurrentNodeHeight(350);
                 } else {
-                    setCurrentBoxHeight(boxHeight);
+                    setCurrentNodeHeight(nodeHeight);
                 }
             }
 
@@ -212,20 +231,24 @@ export const BoxContainer = ({
     }, [minimized]);
 
     useEffect(() => {
-        if (boxWidth == undefined) {
-            setCurrentBoxWidth(525);
+        if (nodeWidth == undefined) {
+            setCurrentNodeWidth(525);
         }
 
-        if (boxHeight == undefined) {
-            setCurrentBoxHeight(267);
+        if (nodeHeight == undefined) {
+            setCurrentNodeHeight(350);
         }
+    }, []);
 
+    useEffect(() => {
         const resizer = document.getElementById(
             nodeId + "resizer"
         ) as HTMLElement;
         const resizable = document.getElementById(
             nodeId + "resizable"
         ) as HTMLElement;
+
+        if (!resizer || !resizable) return;
 
         let startX = 0;
         let startY = 0;
@@ -235,12 +258,37 @@ export const BoxContainer = ({
         function resize(e: any) {
             const newWidth = startWidth + (e.clientX - startX);
             const newHeight = startHeight + (e.clientY - startY);
-    
+
             resizable.style.width = newWidth + "px";
             resizable.style.height = newHeight + "px";
-    
-            setCurrentBoxWidth(newWidth);
-            setCurrentBoxHeight(newHeight);
+
+            setCurrentNodeWidth(newWidth);
+            setCurrentNodeHeight(newHeight);
+        }
+
+        function stopResize(e: any) {
+            window.removeEventListener("mousemove", resize, false);
+            window.removeEventListener("mouseup", stopResize, false);
+
+            const newWidth = resizable.offsetWidth;
+            const newHeight = resizable.offsetHeight;
+            if (dashboardOn) {
+                if (data.dashboardWidth !== newWidth || data.dashboardHeight !== newHeight) {
+                    updateDataNode(nodeId, {
+                        ...data,
+                        dashboardWidth: newWidth,
+                        dashboardHeight: newHeight,
+                    });
+                }
+            } else {
+                if (data.nodeWidth !== newWidth || data.nodeHeight !== newHeight) {
+                    updateDataNode(nodeId, {
+                        ...data,
+                        nodeWidth: newWidth,
+                        nodeHeight: newHeight,
+                    });
+                }
+            }
         }
 
         function initResize(e: any) {
@@ -255,11 +303,10 @@ export const BoxContainer = ({
 
         resizer.addEventListener("mousedown", initResize, false);
 
-        function stopResize(e: any) {
-            window.removeEventListener("mousemove", resize, false);
-            window.removeEventListener("mouseup", stopResize, false);
-        }
-    }, []);
+        return () => {
+            resizer.removeEventListener("mousedown", initResize, false);
+        };
+    }, [dashboardOn, dashboardLocked]);
 
     const updateDataGoal = (goal: string) => {
         if(data.goal != goal){
@@ -272,9 +319,9 @@ export const BoxContainer = ({
         }
     }
 
-    const generateSubtaskFromExec = async (node_content: string, node_type: BoxType, current_task: string) => {
+    const generateSubtaskFromExec = async (node_content: string, node_type: NodeType, current_task: string) => {
         try {
-            let result = await openAIRequest("default_preamble", "new_subtask_from_exec_prompt", " Node content: " + node_content + "\n" + "Node type: " + node_type + " Task: " + current_task);
+            let result = await llmRequest("default_preamble", "new_subtask_from_exec_prompt", " Node content: " + node_content + "\n" + "Node type: " + node_type + " Task: " + current_task);
             
             console.log("generateSubtaskFromExec result", result);
 
@@ -284,7 +331,7 @@ export const BoxContainer = ({
             updateDataGoal(new_subtask);
         } catch (error) {
             console.error("Error communicating with LLM", error);
-            alert("Error communicating with LLM");
+            showToast("Error communicating with LLM", "error");
         }
     }
 
@@ -322,15 +369,9 @@ export const BoxContainer = ({
         setComments([...comments, comment]);
     };
 
-    const options = disableComments
-        ? [{ name: "Delete", action: onDelete }]
-        : [
-              { name: "Delete", action: onDelete },
-              {
-                  name: showComments ? "Hide Comments" : "Show Comments",
-                  action: () => setShowComments(!showComments),
-              },
-          ];
+    useEffect(() => {
+        setPinnedToDashboard(!!dashboardPins[nodeId]);
+    }, [dashboardPins[nodeId]]);
 
     const updatePin = (nodeId: string, value: boolean) => {
         setPinnedToDashboard(!value);
@@ -351,7 +392,7 @@ export const BoxContainer = ({
 
         try {
     
-            let result = await openAIRequest("default_preamble", "new_connection_prompt", "Dataflow task: " + workflowGoal + "\n nodeId: " + nodeId + "\n Subtask: " + goal + "\n Your suggested nodes will be connected to the: " + inOrOut + "\n Current Trill: " + JSON.stringify(trill_spec));
+            let result = await llmRequest("default_preamble", "new_connection_prompt", "Dataflow task: " + workflowGoal + "\n nodeId: " + nodeId + "\n Subtask: " + goal + "\n Your suggested nodes will be connected to the: " + inOrOut + "\n Current Trill: " + JSON.stringify(trill_spec));
 
             let clean_result = result.result.replaceAll("```json", "").replaceAll("```python", "");
             clean_result = clean_result.replaceAll("```", "");
@@ -382,7 +423,7 @@ export const BoxContainer = ({
             loadTrill(parsed_result, "connection");
         } catch (error) {
             console.error("Error communicating with LLM", error);
-            alert("Error communicating with LLM");
+            showToast("Error communicating with LLM", "error");
         }
 
     }
@@ -403,7 +444,7 @@ export const BoxContainer = ({
                     }
                 }
 
-                let result = await openAIRequest("default_preamble", "new_content_prompt", "Current Trill: " + JSON.stringify(trill_spec) + "\n" + " Node ID: " + nodeId + "\n" + "Subtask: "+goal+" Task: " + "\n" + workflowGoal);
+                let result = await llmRequest("default_preamble", "new_content_prompt", "Current Trill: " + JSON.stringify(trill_spec) + "\n" + " Node ID: " + nodeId + "\n" + "Subtask: "+goal+" Task: " + "\n" + workflowGoal);
     
                 let clean_result = result.result.replaceAll("```json", "").replaceAll("```python", "");
                 clean_result = clean_result.replaceAll("```", "");
@@ -414,7 +455,7 @@ export const BoxContainer = ({
 
             } catch (error) {
                 console.error("Error communicating with LLM", error);
-                alert("Error communicating with LLM");
+                showToast("Error communicating with LLM", "error");
             }
         }
 
@@ -422,17 +463,17 @@ export const BoxContainer = ({
 
     const clickGenerateContentNode = () => {
         setCurrentEventPipeline("Generate content for node");
-        generateContentNode(nodes, edges, workflowNameRef, goal, workflowGoal);
+        generateContentNode(getNodes(), getEdges(), workflowNameRef, goal, workflowGoal);
     }
 
-    const boxIconTranslation = (boxType: BoxType) => {
-        try { return getNodeDescriptor(boxType).icon; }
+    const nodeIconTranslation = (nodeType: NodeType) => {
+        try { return getNodeDescriptor(nodeType).icon; }
         catch { return faCopy; }
     };
 
-    const boxNameTranslation = (boxType: BoxType) => {
-        try { return getNodeDescriptor(boxType).label; }
-        catch { return boxType; }
+    const nodeNameTranslation = (nodeType: NodeType) => {
+        try { return getNodeDescriptor(nodeType).label; }
+        catch { return nodeType; }
     };
 
     return (
@@ -466,10 +507,10 @@ export const BoxContainer = ({
             }
 
             {!minimized && isSubtasksOpen ?
-                <div style={{...goalInput, ...(currentBoxWidth ? {width: (currentBoxWidth-4)+"px"} : {}), ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {opacity: "50%", pointerEvents: "none"} : {})}} className={"nodrag"}>
+                <div style={{...goalInput, ...(currentNodeWidth ? {width: (currentNodeWidth-4)+"px"} : {}), ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {opacity: "50%", pointerEvents: "none"} : {})}} className={"nodrag"}>
                     <label htmlFor={nodeId+"_goal_box_input"}>Subtask: </label>
                     <input id={nodeId+"_goal_box_input"} type={"text"} style={{width: "65%", border: "none", background: "transparent", color: "rgb(251, 252, 246)", borderBottom: "1px solid rgb(46, 91, 136)"}} value={goal} onBlur={() => {updateDataGoal(goal)}} onChange={(value: any) => {setGoal(value.target.value)}}/>
-                    {data.nodeType != BoxType.VIS_UTK ? <button style={buttonStyle} onClick={() => {
+                    {data.nodeType != NodeType.VIS_UTK ? <button style={buttonStyle} onClick={() => {
                         if(AIModeRef.current)
                             clickGenerateContentNode();
                     }} >Get code</button> : null}
@@ -525,7 +566,7 @@ export const BoxContainer = ({
                     icon={faCirclePlus} 
                     onClick={() => {
                         if(AIModeRef.current)
-                            generateConnectionSuggestions(nodes, edges, workflowNameRef, goal, "input")
+                            generateConnectionSuggestions(getNodes(), getEdges(), workflowNameRef, goal, "input")
                     }} /> : null
             }
 
@@ -551,152 +592,128 @@ export const BoxContainer = ({
             {!minimized && isConnectionRightOpen && (handleType == "in/out" || handleType == "out") && !(data.suggestionType != "none" && data.suggestionType != undefined) ?
                 <FontAwesomeIcon style={newOutConnectionStyle} icon={faCirclePlus} onClick={() => {
                     if(AIModeRef.current)
-                        generateConnectionSuggestions(nodes, edges, workflowNameRef, goal, "output")
+                        generateConnectionSuggestions(getNodes(), getEdges(), workflowNameRef, goal, "output")
                 }} /> : null
             }
 
-            <div
+            {(!dashboardOn || !dashboardLocked) && <div
                 id={nodeId + "resizer"}
                 className={"resizer nowheel nodrag"}
                 style={{
                     ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {pointerEvents: "none"} : {})
                 }}
-            ></div>
+            ></div>}
             <div
                 id={nodeId + "resizable"}
                 className={"resizable"}
                 style={{
-                    ...boxContainerStyles,
+                    ...getNodeContainerStyles(data.nodeType),
                     ...styles,
-                    width: currentBoxWidth + "px",
-                    height: currentBoxHeight + "px",
+                    width: currentNodeWidth + "px",
+                    height: currentNodeHeight + "px",
                     ...(minimized ? { display: "none" } : {}),
-                    ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {opacity: 0.5, borderWidth: "2px", borderStyle: "dashed", pointerEvents: "none"} : {}), 
-                    ...(data.suggestionAcceptable ? {borderColor: "#1d3853"} : {}), 
-                    ...(data.keywordHighlighted ? {backgroundColor: "#1E1F23"} : {})
+                    ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {opacity: 0.5, borderWidth: "2px", borderStyle: "dashed", pointerEvents: "none"} : {}),
+                    ...(data.suggestionAcceptable ? {borderColor: "#1d3853"} : {}),
+                    ...(data.keywordHighlighted ? {backgroundColor: "#1E1F23"} : {}),
+                    ...(dashboardOn ? {border: "2px solid #000", boxShadow: "none", borderRadius: "0", resize: "none"} : {})
                 }}
-                onContextMenu={onContextMenu}
             >
-                {!noContent ? (
-                    <Row
-                        style={{
-                            width: "95%",
-                            height: "30px",
-                            marginBottom: "2px",
-                            paddingBottom: "2px",
-                            marginLeft: "auto",
-                            marginRight: "auto",
-                            borderBottom: "1px solid rgba(107, 107, 107, 0.3)",
-                        }}
-                    >
-                        <p
-                            style={{
-                                ...{
-                                    textAlign: "center",
-                                    marginBottom: 0,
-                                    fontSize: "12px",
-                                    fontWeight: "bold",
-                                    position: "fixed",
-                                    top: "10px",
-                                    left: 0,
-                                    color: "#888787",
-                                },
-                                ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {color: "#888787"})
-                            }}
-                        >
-                            {boxNameTranslation(data.nodeType)}
-                            {templateData.name != undefined
-                                ? " - " + templateData.name
-                                : null}
-                        </p>
+                {!noContent && !dashboardOn ? (
+                    <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        height: "30px",
+                        marginBottom: "2px",
+                        paddingBottom: "2px",
+                        borderBottom: "1px solid rgba(107, 107, 107, 0.3)",
+                        gap: "6px",
+                        padding: "0 4px 2px 4px",
+                        boxSizing: "border-box",
+                        width: "100%",
+                        ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {pointerEvents: "none"} : {})
+                    }}>
+                        {/* Minimize toggle */}
+                        <FontAwesomeIcon
+                            icon={faMinus}
+                            style={{ ...headerIconStyle, flexShrink: 0, ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {}) }}
+                            title="Minimize"
+                            onClick={() => setMinimized(true)}
+                        />
 
-                        <ul
+                        {/* Node name — fills remaining space */}
+                        <span style={{
+                            flex: 1,
+                            textAlign: "center",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            minWidth: 0,
+                            color: data.keywordHighlighted ? "rgb(251, 252, 246)" : "#888787",
+                        }}>
+                            {nodeExecStatus[nodeId] === "executed" ? (
+                                <span
+                                    style={{
+                                        color: "#2F8F4A",
+                                        marginRight: "4px",
+                                        fontSize: "10px",
+                                    }}
+                                    title="Executed"
+                                >
+                                    &#10003;
+                                </span>
+                            ) : null}
+                            {nodeNameTranslation(data.nodeType)}
+                            {templateData.name != undefined ? " · " + templateData.name : null}
+                        </span>
+
+                        {/* Right-side action icons */}
+                        {promptModal != undefined && templateData.id != undefined && templateData.custom ? (
+                            <FontAwesomeIcon
+                                icon={faGear}
+                                style={{ ...headerIconStyle, ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {}) }}
+                                title="Settings"
+                                onClick={() => promptModal()}
+                            />
+                        ) : null}
+                        <FontAwesomeIcon
+                            icon={pinnedToDashboard ? faCircleDot : faCircle}
                             style={{
-                                listStyle: "none",
-                                padding: 0,
-                                display: "flex",
-                                margin: 0,
-                                justifyContent: "flex-end",
-                                zIndex: 5,
+                                ...headerIconStyle,
+                                color: pinnedToDashboard ? "red" : (data.keywordHighlighted ? "rgb(251, 252, 246)" : "#888787"),
                             }}
-                        >
-                            {promptModal != undefined &&
-                            templateData.id != undefined &&
-                            templateData.custom ? (
-                                <li style={{ marginLeft: "10px" }}>
-                                    <FontAwesomeIcon
-                                        onClick={() => {
-                                            promptModal();
-                                        }}
-                                        icon={faGear}
-                                        style={iconStyle}
-                                    />
-                                </li>
-                            ) : null}
-                            <li style={{ marginLeft: "10px" }}>
-                                <FontAwesomeIcon
-                                    onClick={() => {
-                                        promptDescription();
-                                    }}
-                                    icon={faCircleInfo}
-                                    style={{
-                                        ...iconStyle,
-                                        ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {color: "#888787"})
-                                    }}
-                                />
-                            </li>
-                            <li style={{ marginLeft: "10px" }}>
-                                <FontAwesomeIcon
-                                    icon={faComments}
-                                    style={{
-                                        ...iconStyle,
-                                        ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {color: "#888787"})
-                                    }}
-                                    onClick={() =>
-                                        setShowComments(!showComments)
-                                    }
-                                />
-                            </li>
-                            <li style={{ marginLeft: "10px" }}>
-                                <FontAwesomeIcon
-                                    icon={faXmark}
-                                    style={{
-                                        ...iconStyle, 
-                                        ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {color: "#888787"})
-                                    }}
-                                    onClick={onDelete}
-                                />
-                            </li>
-                            {updateTemplate != undefined &&
-                            code != undefined &&
-                            templateData.id != undefined &&
-                            templateData.custom &&
-                            code != templateData.code ? (
-                                <li style={{ marginLeft: "10px" }}>
-                                    <FontAwesomeIcon
-                                        icon={faFloppyDisk}
-                                        style={{
-                                            ...iconStyle, 
-                                            ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {color: "#888787"})
-                                        }}
-                                        onClick={() => {
-                                            updateTemplate({
-                                                ...templateData,
-                                                code: code,
-                                            });
-                                        }}
-                                    />
-                                </li>
-                            ) : null}
-                        </ul>
-                    </Row>
+                            title={pinnedToDashboard ? "Unpin from dashboard" : "Pin to dashboard"}
+                            onClick={() => updatePin(nodeId, pinnedToDashboard)}
+                        />
+                        <FontAwesomeIcon
+                            icon={faComments}
+                            style={{ ...headerIconStyle, ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {}) }}
+                            title="Comments"
+                            onClick={() => setShowComments(!showComments)}
+                        />
+                        <FontAwesomeIcon
+                            icon={faXmark}
+                            style={{ ...headerIconStyle, ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {}) }}
+                            title="Delete node"
+                            onClick={onDelete}
+                        />
+                        {updateTemplate != undefined && code != undefined && templateData.id != undefined && templateData.custom && code != templateData.code ? (
+                            <FontAwesomeIcon
+                                icon={faFloppyDisk}
+                                style={{ ...headerIconStyle, ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {}) }}
+                                title="Save template"
+                                onClick={() => updateTemplate({ ...templateData, code: code })}
+                            />
+                        ) : null}
+                    </div>
                 ) : null}
 
-                <div style={{height: "calc(100% - 35px)", width: "calc(100% - 30px)", marginLeft: "auto", marginRight: "auto"}}>
+                <div style={{height: dashboardOn ? "100%" : "calc(100% - 35px)", width: "calc(100% - 30px)", marginLeft: "auto", marginRight: "auto"}}>
                     {children}
                 </div>
 
-                <Row
+                {!dashboardOn && <Row
                     style={{
                         ...{
                             width: "25%",
@@ -732,11 +749,7 @@ export const BoxContainer = ({
                                                 color: "rgb(251, 170, 105)",
                                             }}
                                             onClick={() => {
-                                                setOutputCallback({
-                                                    code: "exec",
-                                                    content: "",
-                                                });
-                                                sendCodeToWidgets(code); // will resolve markers
+                                                playNodesUpTo(data.nodeId);
                                                 if(AIModeRef.current)
                                                     generateSubtaskFromExec((code ? code : ""), data.nodeType, workflowGoal);
                                             }}
@@ -812,7 +825,7 @@ export const BoxContainer = ({
                                             </Dropdown.Item>
 
                                             {getTemplates(
-                                                data.nodeType as BoxType,
+                                                data.nodeType as NodeType,
                                                 false
                                             ).length > 0 ? (
                                                 <>
@@ -828,7 +841,7 @@ export const BoxContainer = ({
                                                         Default Templates
                                                     </Dropdown.ItemText>
                                                     {getTemplates(
-                                                        data.nodeType as BoxType,
+                                                        data.nodeType as NodeType,
                                                         false
                                                     ).map(
                                                         (
@@ -869,7 +882,7 @@ export const BoxContainer = ({
                                             ) : null}
 
                                             {getTemplates(
-                                                data.nodeType as BoxType,
+                                                data.nodeType as NodeType,
                                                 true
                                             ).length > 0 ? (
                                                 <>
@@ -885,7 +898,7 @@ export const BoxContainer = ({
                                                         Custom Templates
                                                     </Dropdown.ItemText>
                                                     {getTemplates(
-                                                        data.nodeType as BoxType,
+                                                        data.nodeType as NodeType,
                                                         true
                                                     ).map(
                                                         (
@@ -953,57 +966,8 @@ export const BoxContainer = ({
                             {/* </Col> */}
                         </Row>
                     ) : null}
-                </Row>
+                </Row>}
 
-                {pinnedToDashboard ? (
-                    <FontAwesomeIcon
-                        icon={faCircleDot}
-                        style={{
-                            ...{
-                                color: "red",
-                                cursor: "pointer",
-                                fontSize: "10px",
-                                position: "fixed",
-                                top: "12px",
-                                left: "10px",
-                                zIndex: 11,
-                            },
-                            ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {pointerEvents: "none"} : {})
-                        }}
-                        onClick={() => {
-                            updatePin(nodeId, pinnedToDashboard);
-                        }}
-                    />
-                ) : (
-                    <FontAwesomeIcon
-                        style={{
-                            ...{
-                                color: "888",
-                                cursor: "pointer",
-                                fontSize: "10px",
-                                position: "fixed",
-                                top: "12px",
-                                left: "10px",
-                                zIndex: 11,
-                            },
-                            ...(data.keywordHighlighted ? {color: "rgb(251, 252, 246)"} : {color: "888"}),
-                            ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {pointerEvents: "none"} : {})
-                        }}
-                        icon={faCircle}
-                        onClick={() => {
-                            updatePin(nodeId, pinnedToDashboard);
-                        }}
-                    />
-                )}
-
-                {
-                    !(data.suggestionType != "none" && data.suggestionType != undefined) ?
-                    <RightClickMenu
-                        menuPosition={menuPosition}
-                        showMenu={showMenu}
-                        options={options}
-                    /> : null
-                }
             </div>
 
             {showComments && (
@@ -1019,30 +983,30 @@ export const BoxContainer = ({
                 <div
                     style={{
                         ...{
-                            width: currentBoxWidth + "px",
-                            height: currentBoxHeight + "px",
-                            backgroundColor: "white",
-                            boxShadow: "rgba(0, 0, 0, 0.35) 0px 5px 15px",
+                            width: currentNodeWidth + "px",
+                            height: currentNodeHeight + "px",
+                            backgroundColor: "#ffffff",
                             borderRadius: "10px",
                             padding: "5px",
                             justifyContent: "center",
                             display: "flex",
                             alignItems: "center",
+                            boxShadow: "rgba(0, 0, 0, 0.35) 0px 5px 15px",
                         },
                         ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {pointerEvents: "none"} : {})
                     }}
                     onClick={() => {
-                        if (data.nodeType != BoxType.MERGE_FLOW) {
-                            if (boxWidth == undefined) {
-                                setCurrentBoxWidth(525);
+                        if (data.nodeType != NodeType.MERGE_FLOW) {
+                            if (nodeWidth == undefined) {
+                                setCurrentNodeWidth(525);
                             } else {
-                                setCurrentBoxWidth(boxWidth);
+                                setCurrentNodeWidth(nodeWidth);
                             }
 
-                            if (boxHeight == undefined) {
-                                setCurrentBoxHeight(267);
+                            if (nodeHeight == undefined) {
+                                setCurrentNodeHeight(350);
                             } else {
-                                setCurrentBoxHeight(boxHeight);
+                                setCurrentNodeHeight(nodeHeight);
                             }
 
                             setMinimized(false);
@@ -1050,7 +1014,7 @@ export const BoxContainer = ({
                     }}
                 >
                     <FontAwesomeIcon
-                        icon={boxIconTranslation(data.nodeType)}
+                        icon={nodeIconTranslation(data.nodeType)}
                         style={{ 
                             ...iconStyle, 
                             fontSize: "23px",
@@ -1060,25 +1024,19 @@ export const BoxContainer = ({
                 </div>
             ) : null}
 
-            <FontAwesomeIcon
-                icon={!minimized ? faMinus : faUpRightAndDownLeftFromCenter}
-                style={{
-                    ...iconStyle,
-                    position: "fixed",
-                    ...(minimized
-                        ? { top: "5px", left: "5px" }
-                        : { left: "50px", top: "12px" }),
-                    fontSize: "10px",
-                    zIndex: 8,
-                }}
-                onClick={() => {
-                    if (data.nodeType == BoxType.MERGE_FLOW) {
-                        setMinimized(true);
-                    } else {
-                        setMinimized(!minimized);
-                    }
-                }}
-            />
+            {noContent ? (
+                <FontAwesomeIcon
+                    icon={faUpRightAndDownLeftFromCenter}
+                    style={{
+                        ...headerIconStyle,
+                        position: "fixed",
+                        top: "5px",
+                        left: "5px",
+                        zIndex: 8,
+                    }}
+                    onClick={() => setMinimized(false)}
+                />
+            ) : null}
         </>
     );
 };
@@ -1089,44 +1047,39 @@ export const iconStyle: CSS.Properties = {
     color: "#888787",
 };
 
-const boxContainerStyles: CSS.Properties = {
+const headerIconStyle: CSS.Properties = {
+    cursor: "pointer",
+    fontSize: "11px",
+    color: "#888787",
+    flexShrink: 0,
+};
+
+const nodeTypeBorderColor: Record<string, string> = {
+    [NodeType.DATA_LOADING]: "#3498db",
+    [NodeType.DATA_EXPORT]: "#3498db",
+    [NodeType.DATA_TRANSFORMATION]: "#3498db",
+    [NodeType.DATA_SUMMARY]: "#3498db",
+    [NodeType.COMPUTATION_ANALYSIS]: "#8e44ad",
+    [NodeType.FLOW_SWITCH]: "#8e44ad",
+    [NodeType.MERGE_FLOW]: "#8e44ad",
+    [NodeType.DATA_POOL]: "#8e44ad",
+    [NodeType.CONSTANTS]: "#8e44ad",
+    [NodeType.VIS_UTK]: "#1abc9c",
+    [NodeType.VIS_VEGA]: "#1abc9c",
+    [NodeType.VIS_SIMPLE]: "#1abc9c",
+    [NodeType.COMMENTS]: "#95a5a6",
+};
+
+const getNodeContainerStyles = (nodeType: string): CSS.Properties => ({
     position: "relative",
-    backgroundColor: "white",
-    boxShadow: "rgba(0, 0, 0, 0.35) 0px 5px 15px",
+    backgroundColor: "#ffffff",
+    borderLeft: `4px solid ${nodeTypeBorderColor[nodeType] ?? "#95a5a6"}`,
     borderRadius: "10px",
     padding: "5px",
-};
+    boxShadow: "rgba(0, 0, 0, 0.35) 0px 5px 15px",
+});
 
-export const RightClickMenu = ({
-    showMenu,
-    menuPosition,
-    options,
-}: {
-    showMenu: boolean;
-    menuPosition: { y: number; x: number };
-    options: { name: string; action: () => void }[];
-}) => {
-    return (
-        <Dropdown show={showMenu} drop="end">
-            <Dropdown.Menu
-                style={{
-                    position: "fixed",
-                    top: menuPosition.y,
-                    left: menuPosition.x,
-                    transform: "translate(0, 0)",
-                }}
-            >
-                {options.map((option) => (
-                    <Dropdown.Item key={option.name} onClick={option.action}>
-                        {option.name}
-                    </Dropdown.Item>
-                ))}
-            </Dropdown.Menu>
-        </Dropdown>
-    );
-};
-
-const boxContentStyle: CSS.Properties = {
+const nodeContentStyle: CSS.Properties = {
     backgroundColor: "white",
 };
 

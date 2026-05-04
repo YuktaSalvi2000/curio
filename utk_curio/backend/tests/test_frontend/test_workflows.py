@@ -2,8 +2,29 @@ import os
 import re
 import json
 import time
-from dataclasses import dataclass
-from collections import deque
+import pytest
+
+# from .utils import (
+    # save_workflow_test_screenshot,
+    # get_shared_data_dir,
+    # load_dot_data,
+    # strip_volatile_keys,
+    # execute_workflow_programmatically,
+    # dot_data_to_vega_values,
+    # save_expected_svg,
+    # compare_svg_structure,
+# )
+from .utils import (
+    save_workflow_test_screenshot,
+    get_shared_data_dir,
+    load_artifact_as_dict,
+    execute_workflow_programmatically,
+    dot_data_to_vega_values,
+    save_expected_svg,
+    compare_svg_structure,
+)
+from .workflow_spec import NodeSpec, CODE_EDITOR_TYPES
+
 """
 This test file is to test the loading of workflow files in the frontend.
 To watch the browser (see the menu open): run with --headed, e.g.
@@ -34,194 +55,6 @@ def test_load_workflow_files(workflow_files):
             assert edges_count > 0, f"Workflow file {workflow_file} has no edges"
 
 
-# ---------------------------------------------------------------------------
-# Data model: parse workflow JSON into structured specs
-# ---------------------------------------------------------------------------
-
-GRAMMAR_TYPES = {"VIS_VEGA", "VIS_UTK"}
-CODE_TYPES = {
-    "DATA_LOADING", "DATA_CLEANING", "DATA_TRANSFORMATION",
-    "DATA_EXPORT", "COMPUTATION_ANALYSIS", "CONSTANTS",
-    "FLOW_SWITCH", "VIS_TEXT",
-}
-
-# Subset of CODE_TYPES whose frontend component passes ``code={true}``
-# to ``BoxEditor``, meaning they render a "code" tab with a Monaco editor.
-# The remaining CODE_TYPES (DATA_EXPORT, CONSTANTS, VIS_TEXT) use
-# ``code={false}`` and have no code tab.
-CODE_EDITOR_TYPES = {
-    "DATA_LOADING", "DATA_CLEANING", "DATA_TRANSFORMATION",
-    "COMPUTATION_ANALYSIS", "FLOW_SWITCH",
-}
-
-
-def classify_node(node_type: str) -> str:
-    """Classify a workflow node type string into a test category.
-
-    Categories:
-        "code"     – has a Monaco code editor and a play button
-        "grammar"  – has a JSON / grammar editor and a play button
-        "datapool" – has ``#data-tabs`` but NO play button
-        "passive"  – no standard editor and no play button (e.g. MERGE_FLOW, VIS_IMAGE)
-    """
-    if node_type in GRAMMAR_TYPES:
-        return "grammar"
-    if node_type == "DATA_POOL":
-        return "datapool"
-    if node_type in CODE_TYPES:
-        return "code"
-    # MERGE_FLOW, VIS_IMAGE, COMMENTS, or any unknown type
-    return "passive"
-
-
-@dataclass
-class NodeSpec:
-    """Expected properties of a single node parsed from the workflow JSON."""
-    id: str
-    type: str            # e.g. "DATA_LOADING", "VIS_VEGA"
-    x: float
-    y: float
-    content: str         # raw content string (may be empty for DataPool)
-    in_type: str         # "DEFAULT", "DATAFRAME", etc.
-    out_type: str
-    category: str        # "code" | "grammar" | "datapool" | "passive"
-
-    @property
-    def has_play_button(self) -> bool:
-        """Only code and grammar nodes expose a play button."""
-        return self.category in ("code", "grammar")
-
-
-@dataclass
-class WorkflowSpec:
-    """Expected structure of a complete workflow parsed from JSON."""
-    filepath: str
-    name: str
-    nodes: list          # list[NodeSpec]
-    edges: list          # list[dict]  –  each: {id, source, target, type?}
-
-    @property
-    def nodes_count(self) -> int:
-        return len(self.nodes)
-
-    @property
-    def edges_count(self) -> int:
-        """Count only regular (non-Interaction) edges.
-
-        Workflow JSON files contain two kinds of edges:
-
-        1. **Regular edges** – standard data-flow connections between an
-           ``out`` handle and an ``in`` handle (``type`` is ``None`` or
-           absent).  The frontend renders each of these as a
-           ``.react-flow__edge`` DOM element.
-
-        2. **Interaction edges** – ``type == 'Interaction'``.  These link
-           ``in/out`` handles and represent a bidirectional interaction
-           channel (e.g. brushing / highlighting) between visualisation
-           nodes.  The frontend renders them through a separate interaction
-           layer and they do **not** produce ``.react-flow__edge`` DOM
-           elements.
-
-        This property returns the count of regular edges only, so it can
-        be compared directly against
-        ``page.locator('.react-flow__edge').count()``.
-        """
-        return sum(1 for e in self.edges if e.get("type") != "Interaction")
-
-    @property
-    def interaction_edges_count(self) -> int:
-        """Count Interaction-type edges.
-
-        Interaction edges (``type == 'Interaction'``) use ``in/out``
-        handles on both source and target nodes (visible in their edge
-        IDs, e.g. ``…in/out-…in/out``).  They represent a bidirectional
-        interaction channel – for instance, brushing a bar in a Vega
-        chart highlights the corresponding geometry on a UTK map, and
-        vice-versa.
-
-        The frontend does **not** render these as ``.react-flow__edge``
-        elements; instead they are managed by a dedicated interaction
-        layer.  Use this count when you need to verify interaction
-        wiring separately from the standard data-flow edge count.
-        """
-        return sum(1 for e in self.edges if e.get("type") == "Interaction")
-
-    def topo_sorted_nodes(self) -> list:
-        """Return nodes in topological (dependency) order using Kahn's algorithm.
-
-        Source / root nodes come first so upstream boxes execute before
-        downstream ones.  If cycles exist the remaining nodes are appended
-        at the end.
-        """
-        node_map = {n.id: n for n in self.nodes}
-        in_degree = {n.id: 0 for n in self.nodes}
-        adj: dict[str, list[str]] = {n.id: [] for n in self.nodes}
-
-        for edge in self.edges:
-            src, tgt = edge["source"], edge["target"]
-            if src in adj and tgt in in_degree:
-                adj[src].append(tgt)
-                in_degree[tgt] += 1
-
-        queue = deque(nid for nid, deg in in_degree.items() if deg == 0)
-        ordered: list[NodeSpec] = []
-
-        while queue:
-            nid = queue.popleft()
-            ordered.append(node_map[nid])
-            for neighbour in adj[nid]:
-                in_degree[neighbour] -= 1
-                if in_degree[neighbour] == 0:
-                    queue.append(neighbour)
-
-        # Append any remaining nodes (cycles or disconnected)
-        visited = {n.id for n in ordered}
-        for n in self.nodes:
-            if n.id not in visited:
-                ordered.append(n)
-
-        return ordered
-
-
-def parse_workflow(filepath: str) -> WorkflowSpec:
-    """Read a workflow JSON file and return a ``WorkflowSpec``."""
-    with open(filepath, "r") as f:
-        data = json.loads(f.read())
-
-    dataflow = data["dataflow"]
-
-    nodes = [
-        NodeSpec(
-            id=n["id"],
-            type=n["type"],
-            x=float(n.get("x", 0)),
-            y=float(n.get("y", 0)),
-            content=n.get("content", ""),
-            in_type=n.get("in", "DEFAULT"),
-            out_type=n.get("out", "DEFAULT"),
-            category=classify_node(n["type"]),
-        )
-        for n in dataflow["nodes"]
-    ]
-
-    edges = [
-        {
-            "id": e["id"],
-            "source": e["source"],
-            "target": e["target"],
-            "type": e.get("type"),
-        }
-        for e in dataflow["edges"]
-    ]
-
-    return WorkflowSpec(
-        filepath=filepath,
-        name=data.get("name", os.path.basename(filepath)),
-        nodes=nodes,
-        edges=edges,
-    )
-
-
 
 # ---------------------------------------------------------------------------
 # Test class
@@ -237,22 +70,60 @@ class TestWorkflowCanvas:
 
     # -- helpers -----------------------------------------------------------
 
+    #: Set when ``test_node_execution`` completes successfully for a workflow
+    #: (keyed by ``spec.filepath``). Used so ``test_provenance_graph`` does not
+    #: re-run node execution with long timeouts after a failed execution test.
+    _node_execution_success_by_spec: dict = {}
+
     def _node_locator(self, node: NodeSpec):
         """Return a Playwright ``Locator`` for a ReactFlow node element."""
         return self.page.locator(f'.react-flow__node[data-id="{node.id}"]')
 
+    def _save_screenshot(self, request):
+        """Persist canvas screenshot (see ``save_workflow_test_screenshot``)."""
+        save_workflow_test_screenshot(
+            self.page,
+            self.spec.filepath,
+            test_name=request.function.__name__,
+        )
+
+    def _node_execution_timeout_ms(self, node: NodeSpec) -> int:
+        """Return a generous timeout for nodes that execute heavy data ops."""
+        if node.type in {
+            "DATA_LOADING",
+            "DATA_TRANSFORMATION",
+            "COMPUTATION_ANALYSIS",
+        }:
+            return 120000
+        return 30000
+
     def _execute_all_playable_nodes(self):
         """Click *play* on every node that has a play button (topological order)
-        and wait for each to finish."""
+        and wait for each to finish.  Skips if already executed for the
+        current workflow (guards against repeated calls across tests that
+        share the same class-scoped page)."""
+        if getattr(self.__class__, '_executed_workflow', None) == self.spec.filepath:
+            return
         for node in self.spec.topo_sorted_nodes():
             node_el = self._node_locator(node)
             node_el.scroll_into_view_if_needed()
 
-            # if Pool box wait for data table to show
+            # if Pool node activate output tab then wait for data table to show
             if node.type == "DATA_POOL":
+                # DATA_POOL's table lives inside the NodeEditor output tab pane.
+                # Click the output nav button first so the pane becomes visible.
+                output_tab = node_el.locator(
+                    '.nav-link[data-rr-ui-event-key="output"]'
+                )
+                output_tab.first.wait_for(state="visible", timeout=10000)
+                is_active = "active" in (
+                    output_tab.first.get_attribute("class") or ""
+                )
+                if not is_active:
+                    output_tab.first.click(force=True)
                 data_table = node_el.locator("td.MuiTableCell-root")
-                data_table.first.wait_for(state="visible", timeout=10000)
-                time.sleep(5)
+                data_table.first.wait_for(state="visible", timeout=30000)
+                time.sleep(2)
                 assert data_table.count() >= 1, (
                     f"DataPool node {node.id} ({node.type}) is missing its "
                     f"data table"
@@ -262,7 +133,7 @@ class TestWorkflowCanvas:
                 continue
 
             play_btn = node_el.locator("svg.fa-circle-play")
-            play_btn.wait_for(state="visible", timeout=5000)
+            play_btn.wait_for(state="visible", timeout=10000)
             play_btn.click(force=True)
 
             # wait for loading spinner to appear
@@ -271,26 +142,42 @@ class TestWorkflowCanvas:
             # # wait for loading spinner to disappear
             # loading_spinner.wait_for(state="hidden", timeout=10000)
 
-            # Wait until either "Done" or "Error" is visible
-            node_el.locator("span").filter(
+            # Wait until either "Done" or "Error" is visible, then fail fast on Error
+            result_span = node_el.locator("span").filter(
                 has_text=re.compile(r"^(Done|Error)$")
-            ).first.wait_for(state="visible", timeout=100000)
-
-            # Wait for the execution outcome (up to 30 s)
-            done_span = node_el.locator("span").filter(has_text=re.compile(r"^Done$"))
-            error_span = node_el.locator("span").filter(has_text=re.compile(r"^Error$"))
-            done_span.first.wait_for(state="visible", timeout=100000)
-
-            assert done_span.count() >= 1, (
-                f"Node {node.id} ({node.type}) did not produce 'Done' — "
-                f"error visible: {error_span.is_visible()}"
+            ).first
+            result_span.wait_for(
+                state="visible",
+                timeout=self._node_execution_timeout_ms(node),
             )
+            result_text = result_span.text_content() or ""
+            assert "Error" not in result_text, (
+                f"Node {node.id} ({node.type}) execution failed with Error"
+            )
+
+            done_span = node_el.locator("span").filter(has_text=re.compile(r"^Done$"))
+            assert done_span.count() >= 1, (
+                f"Node {node.id} ({node.type}) did not produce 'Done'"
+            )
+
+            # verify the inline output area shows a Jupyter-style counter (code nodes only)
+            if node.category == "code":
+                output_area = node_el.locator(".nowheel.nodrag").filter(
+                    has_text=re.compile(r"\[\d+\]:")
+                ).first
+                output_area.wait_for(state="visible", timeout=10000)
+        self.__class__._executed_workflow = self.spec.filepath
 
     # -- 1. Node & edge counts --------------------------------------------
 
-    def test_node_and_edge_count(self, loaded_workflow):
+    def test_node_and_edge_count(self, loaded_workflow, request):
         """The canvas must contain the exact number of nodes and edges
         declared in the workflow JSON."""
+        # Guard against a brief React re-render cycle after workflow upload
+        self.page.wait_for_function(
+            f"document.querySelectorAll('.react-flow__node').length >= {self.spec.nodes_count}",
+            timeout=15000,
+        )
         node_els = self.page.locator(".react-flow__node")
         edge_els = self.page.locator(".react-flow__edge")
 
@@ -303,13 +190,18 @@ class TestWorkflowCanvas:
             f"[{wf_name}] Expected {self.spec.edges_count} edges, "
             f"found {edge_els.count()}"
         )
+        # self._save_screenshot(request)
 
     # -- 2. Node positions (relative ordering) -----------------------------
 
-    def test_node_positions(self, loaded_workflow):
+    def test_node_positions(self, loaded_workflow, request):
         """Every node must be rendered on the canvas, and relative
         x-positions from the JSON specification must be preserved
         (``fitView`` rescales but keeps the layout)."""
+        self.page.wait_for_function(
+            f"document.querySelectorAll('.react-flow__node').length >= {self.spec.nodes_count}",
+            timeout=15000,
+        )
         positions: dict[str, tuple[float, float]] = {}
 
         for node in self.spec.nodes:
@@ -336,10 +228,11 @@ class TestWorkflowCanvas:
                     f"{b.id} (spec x={b.x:.1f}), but canvas x "
                     f"{positions[a.id][0]:.1f} > {positions[b.id][0]:.1f}"
                 )
+        # self._save_screenshot(request)
 
     # -- 3. Node type & content (code / grammar / datapool) ----------------
 
-    def test_node_type_and_content(self, loaded_workflow):
+    def test_node_type_and_content(self, loaded_workflow, request):
         """Each node must render the correct editor widget for its category:
 
         * **code** nodes  – a Monaco code editor (``.monaco-editor``)
@@ -347,86 +240,35 @@ class TestWorkflowCanvas:
         * **datapool** nodes – the data-tabs element (``#data-tabs``)
         * **passive** nodes – just the node container (no editor expected)
         """
+        self.page.wait_for_function(
+            f"document.querySelectorAll('.react-flow__node').length >= {self.spec.nodes_count}",
+            timeout=15000,
+        )
         for node in self.spec.nodes:
             node_el = self._node_locator(node)
+            node_el.scroll_into_view_if_needed()
             assert node_el.count() == 1, (
                 f"Node {node.id} ({node.type}) not found on canvas"
             )
 
             if node.category == "code":
 
-                # 1. Check if the output tab is present (always rendered in BoxEditor)
-                output_tab = node_el.locator(
-                    '.nav-link[data-rr-ui-event-key="output"]'
+                # 1. Check that the inline output area (below the Monaco editor)
+                #    is present and shows the initial "No output yet" placeholder.
+                output_area = node_el.locator(".nowheel.nodrag").filter(
+                    has_text=re.compile(r"\[[ ]\]:")
                 )
-
-                assert output_tab.count() >= 1, (
+                assert output_area.count() >= 1, (
                     f"Code node {node.id} ({node.type}) is missing its "
-                    f"output tab"
+                    f"inline output area"
                 )
-                if output_tab.count() >= 1:
-                    # Check if the output content box is active
-                    is_active = "active" in (output_tab.get_attribute("class") or "")
-                    assert is_active, (
-                        f"Output content box {node.id} ({node.type}) is not active"
-                    )
-                    if not is_active:
-                        output_tab.click(force=True)
-                        output_tab.wait_for(state="visible", timeout=3000)
-                    
-                    # OutputContent renders #computation-tabs-tab- with
-                    # Output / Error / Warning sub-tabs.
-                    computation_tabs = node_el.locator(f"#computation-tabs-tab-0")
-
-                    # Test computation output tab if it is a computation node
-                    if computation_tabs.count() >= 1:
-                        # and should contain a div with classes tab-pane and active
-                        active_pane = node_el.locator(".tab-pane.active")
-                        assert active_pane.count() >= 1, (
-                            f"Code node {node.id} ({node.type}) output "
-                            f"area has no active tab-pane"
-                        )
-                        # the output tab content has class tab-content
-                        tab_content = active_pane.locator(".tab-content")
-                        # wait for the tab-content to be visible
-                        tab_content.wait_for(state="visible", timeout=3000)
-                        assert tab_content.count() >= 1, (
-                            f"Code node {node.id} ({node.type}) output "
-                            f"area is missing .tab-content"
-                        )
-                        # and should contain a title h6 with text "Output"
-                        output_heading = tab_content.locator("h6").filter(
-                            has_text="Output"
-                        )
-                        assert output_heading.count() >= 1, (
-                            f"Code node {node.id} ({node.type}) active "
-                            f"output pane is missing 'Output' heading"
-                        )
-                        # and should contain a div below the h6 with
-                        # text "No output available."
-                        no_output_msg = tab_content.locator("div").filter(
-                            has_text="No output available."
-                        )
-                        assert no_output_msg.count() >= 1, (
-                            f"Code node {node.id} ({node.type}) active "
-                            f"output pane is missing 'No output available.'"
-                        )
-                        # and should not contain a title h6 with text "Error"
-                        error_heading = tab_content.locator("h6").filter(
-                            has_text="Error"
-                        )
-                        assert error_heading.count() == 0, (
-                            f"Code node {node.id} ({node.type}) active "
-                            f"output pane should not contain 'Error' heading"
-                        )
-                        # and should not contain a title h6 with text "Warning"
-                        warning_heading = tab_content.locator("h6").filter(
-                            has_text="Warning"
-                        )
-                        assert warning_heading.count() == 0, (
-                            f"Code node {node.id} ({node.type}) active "
-                            f"output pane should not contain 'Warning' heading"
-                        )
+                no_output_text = node_el.locator(".nowheel.nodrag").filter(
+                    has_text="No output yet"
+                )
+                assert no_output_text.count() >= 1, (
+                    f"Code node {node.id} ({node.type}) inline output area "
+                    f"is missing 'No output yet' placeholder"
+                )
                 
                 if node.type in CODE_EDITOR_TYPES:
                     # 2. Check if the code tab is rendered
@@ -510,6 +352,20 @@ class TestWorkflowCanvas:
                 is_active = "active" in (grammar_tab.get_attribute("class") or "")
                 if not is_active:
                     grammar_tab.click(force=True)
+                self.page.wait_for_function(
+                    """({ nodeId, eventKey }) => {
+                        const nodeEl = document.querySelector(
+                            `.react-flow__node[data-id="${nodeId}"]`
+                        );
+                        if (!nodeEl) return false;
+                        const tab = nodeEl.querySelector(
+                            `.nav-link[data-rr-ui-event-key="${eventKey}"]`
+                        );
+                        return !!tab && tab.classList.contains("active");
+                    }""",
+                    arg={"nodeId": node.id, "eventKey": "grammar"},
+                    timeout=6000,
+                )
 
                 grammar_editor = node_el.locator(
                     f'[id="grammarJsonEditor{node.id}"], '
@@ -521,6 +377,9 @@ class TestWorkflowCanvas:
                     f"grammar editor"
                 )
                 # TODO: check if the grammar is rendered inside the editor
+                # Verify the json loaded into the grammar editor matches the
+                # workflow JSON content. 
+                # Grammar editor renders a JSONEditorReact component.
 
             elif node.category == "datapool":
                 data_tabs = node_el.locator("#data-tabs-tab-0")
@@ -530,24 +389,31 @@ class TestWorkflowCanvas:
                 )
 
             else:
-                # passive nodes (MERGE_FLOW, VIS_IMAGE, …): just verify the
+                # passive nodes (MERGE_FLOW, VIS_SIMPLE, …): just verify the
                 # resizable container rendered
                 resizable = node_el.locator(f'[id="{node.id}resizable"]')
                 assert resizable.count() >= 1, (
                     f"Passive node {node.id} ({node.type}) is missing its "
                     f"resizable container"
                 )
+        self._save_screenshot(request)
 
     # # -- 4. Node execution (play button) -----------------------------------
 
-    def test_node_execution(self, loaded_workflow):
+    def test_node_execution(self, loaded_workflow, request):
         """Click the play button on each executable node in topological
-        order and verify that the output status shows *Done*."""
-        # First: run all playable nodes end-to-end
+        order and verify that the output status shows *Done*.
+
+        Before touching the browser, the workflow is executed
+        programmatically (in-process, seeded) to produce expected DuckDB
+        artifacts.  After the browser run, artifact content is compared via
+        ``load_artifact_as_dict``; VIS_VEGA nodes are verified via SVG
+        structural comparison.
+        """
+        expected_map = execute_workflow_programmatically(self.spec, seed=42)
+
         self._execute_all_playable_nodes()
 
-
-        # Then: assert every playable node ended with "Done"
         for node in self.spec.nodes:
             if not node.has_play_button:
                 continue
@@ -562,92 +428,314 @@ class TestWorkflowCanvas:
                 f"Node {node.id} ({node.type}) output is not 'Done' "
                 f"after full workflow execution"
             )
-            # wait for output tab to be visible
+
+            # ---------------------------------------------------------------
+            # Check output area (inline for code nodes; output tab for grammar)
+            # ---------------------------------------------------------------
+
+            if node.category == "code":
+                # Since commit d8050b0 code nodes no longer have a separate output
+                # tab – the execution result is shown inline inside CodeEditor as
+                # a ".nowheel.nodrag" div with a Jupyter-style "[N]:" counter.
+                output_area = node_el.locator(".nowheel.nodrag").filter(
+                    has_text=re.compile(r"\[\d+\]:")
+                )
+                output_area.first.wait_for(state="visible", timeout=10000)
+                assert output_area.count() >= 1, (
+                    f"Code node {node.id} ({node.type}) is missing its "
+                    f"inline output counter after execution"
+                )
+
+                # CodeEditor writes "Saved to file: {artifact_id}" in the inline
+                # output (no .data extension with DuckDB).  Extract the artifact_id
+                # and compare content against the programmatic run.
+                data_output = node_el.locator(".nowheel.nodrag").filter(
+                    has_text=re.compile(r"Saved to file:\s\w+_\w+")
+                )
+                if data_output.count() >= 1 and node.id in expected_map:
+                    artifact_id = data_output.first.evaluate(
+                        r"""(el) => {
+                            const match = el.textContent.match(/Saved to file:\s(\w+_\w+)/);
+                            return match ? match[1] : null;
+                        }"""
+                    )
+                    if artifact_id is not None:
+                        actual = load_artifact_as_dict(artifact_id)
+                        expected_data = load_artifact_as_dict(expected_map[node.id])
+                        if actual != expected_data:
+                            diff_keys = [
+                                k for k in set(actual) | set(expected_data)
+                                if actual.get(k) != expected_data.get(k)
+                            ]
+                            raise AssertionError(
+                                f"Node {node.id} ({node.type}) data content "
+                                f"does not match programmatic execution. "
+                                f"Differing top-level keys: {diff_keys}"
+                            )
+
+            elif node.category == "grammar":
+                # Grammar nodes (VIS_VEGA, VIS_UTK) keep a dedicated output tab
+                # because they pass outputId to NodeEditor.
+                output_tab = node_el.locator(
+                    '.nav-link[data-rr-ui-event-key="output"]'
+                )
+                output_tab.first.wait_for(state="visible", timeout=10000)
+                assert output_tab.count() >= 1, (
+                    f"Grammar node {node.id} ({node.type}) is missing its "
+                    f"output tab"
+                )
+                if output_tab.count() >= 1:
+                    # After execution NodeEditor auto-switches to the output tab.
+                    is_active = "active" in (output_tab.get_attribute("class") or "")
+                    if not is_active:
+                        output_tab.click(force=True)
+                        output_tab.wait_for(state="visible", timeout=3000)
+                    assert is_active, (
+                        f"Grammar node {node.id} ({node.type}) output tab "
+                        f"is not active after execution"
+                    )
+
+                    # OutputContent (computation-tabs) may still appear for some
+                    # grammar nodes that use contentComponent instead of outputId.
+                    computation_tabs = node_el.locator("#computation-tabs-tab-0")
+
+                    if computation_tabs.count() >= 1:
+                        active_pane = node_el.locator(".tab-pane.active")
+                        assert active_pane.count() >= 1, (
+                            f"Grammar node {node.id} ({node.type}) output "
+                            f"area has no active tab-pane"
+                        )
+                        tab_content = active_pane.locator(".tab-content")
+                        tab_content.wait_for(state="visible", timeout=3000)
+                        assert tab_content.count() >= 1, (
+                            f"Grammar node {node.id} ({node.type}) output "
+                            f"area is missing .tab-content"
+                        )
+                        output_heading = tab_content.locator("h6").filter(
+                            has_text="Output"
+                        )
+                        output_heading.first.wait_for(state="visible", timeout=10000)
+                        assert output_heading.count() >= 1, (
+                            f"Grammar node {node.id} ({node.type}) is missing its "
+                            f"output heading"
+                        )
+                        no_output_msg = tab_content.locator("div").filter(
+                            has_text="No output available."
+                        )
+                        no_output_msg.first.wait_for(state="hidden", timeout=10000)
+                        assert no_output_msg.count() == 0, (
+                            f"Grammar node {node.id} ({node.type}) still shows "
+                            f"'No output available.'"
+                        )
+                        # DuckDB: output shows "Saved to file: {artifact_id}" (no .data)
+                        output_content = tab_content.locator("div").filter(
+                            has_text=re.compile(r"Saved to file:\s\w+_\w+")
+                        )
+                        output_content.first.wait_for(state="visible", timeout=10000)
+                        assert output_content.count() >= 1, (
+                            f"Grammar node {node.id} ({node.type}) is missing its "
+                            f"output content"
+                        )
+                        artifact_id = output_content.first.evaluate(
+                            r"""(el) => {
+                                const match = el.textContent.match(/Saved to file:\s(\w+_\w+)/);
+                                return match ? match[1] : null;
+                            }"""
+                        )
+                        assert artifact_id is not None, (
+                            f"Grammar node {node.id} ({node.type}) is missing its artifact id"
+                        )
+                        # Verify the artifact is accessible from DuckDB
+                        load_artifact_as_dict(artifact_id)
+
+                    # ----------------------------------------------------------
+                    # Test created SVG Vega-Lite visualizations
+                    # ----------------------------------------------------------
+                    if node.type == "VIS_VEGA":
+                        vega_container_id = f"vega{node.id}"
+
+                        # A -- Verify SVG exists and is non-empty
+                        svg_locator = node_el.locator(f"#{vega_container_id} svg")
+                        svg_locator.first.wait_for(state="visible", timeout=15000)
+                        assert svg_locator.count() >= 1, (
+                            f"Grammar node {node.id} ({node.type}) is missing "
+                            f"its rendered SVG inside #{vega_container_id}"
+                        )
+
+                        # B -- Re-compile the spec programmatically and save
+                        #      the expected SVG (mirrors .data baseline pattern)
+                        spec_json = json.loads(
+                            node.content.replace("\r\n", "\n").replace("\r", "\n")
+                        )
+
+                        upstream_ids = self.spec.upstream_nodes(node.id)
+                        vega_values: list[dict] = []
+                        for uid in upstream_ids:
+                            candidate = uid
+                            visited: set[str] = set()
+                            while candidate and candidate not in expected_map:
+                                visited.add(candidate)
+                                parents = self.spec.upstream_nodes(candidate)
+                                candidate = next(
+                                    (p for p in parents if p not in visited),
+                                    None,
+                                )
+                            if candidate and candidate in expected_map:
+                                upstream_data = load_artifact_as_dict(
+                                    expected_map[candidate]
+                                )
+                                vega_values = dot_data_to_vega_values(upstream_data)
+                                break
+
+                        assert vega_values, (
+                            f"VIS_VEGA node {node.id}: no upstream data found in "
+                            f"expected_map — searched upstream ids: {upstream_ids}"
+                        )
+
+                        container_dims = self.page.evaluate(
+                            """(containerId) => {
+                                const el = document.getElementById(containerId);
+                                if (!el) return null;
+                                return {
+                                    width: el.clientWidth,
+                                    height: el.clientHeight
+                                };
+                            }""",
+                            vega_container_id,
+                        )
+
+                        expected_svg = self.page.evaluate(
+                            """({ spec, values, dims }) => {
+                                const vega = window.__curio_vega;
+                                const lite = window.__curio_vegaLite;
+                                if (!vega || !lite) return null;
+                                spec.data = { values: values, name: 'data' };
+                                spec.width = dims ? dims.width : 300;
+                                spec.height = dims ? dims.height : 200;
+                                const vegaSpec = lite.compile(spec).spec;
+                                const view = new vega.View(vega.parse(vegaSpec))
+                                    .renderer('svg')
+                                    .initialize(document.createElement('div'));
+                                return view.runAsync().then(() => view.toSVG());
+                            }""",
+                            {
+                                "spec": spec_json,
+                                "values": vega_values,
+                                "dims": container_dims,
+                            },
+                        )
+                        assert expected_svg is not None, (
+                            f"Grammar node {node.id} ({node.type}): "
+                            f"programmatic Vega-Lite re-compilation returned null "
+                            f"(window.__curio_vega / __curio_vegaLite missing?)"
+                        )
+
+                        dataflow_name = os.path.splitext(
+                            os.path.basename(self.spec.filepath)
+                        )[0]
+                        save_expected_svg(dataflow_name, node.id, expected_svg)
+
+                        # C -- Extract the actual SVG from the DOM
+                        actual_svg = self.page.evaluate(
+                            """(containerId) => {
+                                const el = document.getElementById(containerId);
+                                if (!el) return null;
+                                const svg = el.querySelector('svg');
+                                return svg ? svg.outerHTML : null;
+                            }""",
+                            vega_container_id,
+                        )
+                        assert actual_svg is not None, (
+                            f"Grammar node {node.id} ({node.type}): "
+                            f"could not extract SVG from #{vega_container_id}"
+                        )
+
+                        # D -- Structural comparison
+                        diffs = compare_svg_structure(
+                            actual_svg,
+                            expected_svg,
+                        )
+                        assert not diffs, (
+                            f"Grammar node {node.id} ({node.type}) SVG "
+                            f"structural mismatch:\n"
+                            + "\n".join(f"  - {d}" for d in diffs)
+                        )
+
+        # ---- VIS_SIMPLE content verification -----------------------------------
+        # VIS_SIMPLE has no play button so the loop above skips it.  After all
+        # upstream code nodes have finished, VIS_SIMPLE fetches the data async
+        # and sets its contentComponent (table / image mode) or leaves it empty
+        # (text / passthrough mode).  Wait up to 10 s for the async fetch, then
+        # verify the rendered content makes sense for the mode.
+        for node in self.spec.nodes:
+            if node.type != "VIS_SIMPLE":
+                continue
+            node_el = self._node_locator(node)
             output_tab = node_el.locator(
                 '.nav-link[data-rr-ui-event-key="output"]'
             )
-            output_tab.first.wait_for(state="visible", timeout=10000)
-            assert output_tab.count() >= 1, (
-                f"Code node {node.id} ({node.type}) is missing its "
-                f"output tab"
-            )
-            if output_tab.count() >= 1:
-                # Check if the output content box is active
-                is_active = "active" in (output_tab.get_attribute("class") or "")
-                if not is_active:
-                    output_tab.click(force=True)
-                    output_tab.wait_for(state="visible", timeout=3000)
-                assert is_active, (
-                    f"Output content box {node.id} ({node.type}) is not active"
+            # table and image modes → NodeEditor auto-switches to output tab;
+            # text (passthrough) mode → no output tab at all.
+            output_tab_visible = False
+            try:
+                output_tab.first.wait_for(state="visible", timeout=10000)
+                output_tab_visible = True
+            except Exception:
+                pass
+
+            if output_tab_visible:
+                # Ensure the tab is active.
+                is_active = "active" in (
+                    output_tab.first.get_attribute("class") or ""
                 )
-                
-                # OutputContent renders #computation-tabs-tab- with
-                # Output / Error / Warning sub-tabs.
-                computation_tabs = node_el.locator(f"#computation-tabs-tab-0")
+                if not is_active:
+                    output_tab.first.click(force=True)
 
-                # Test computation output tab if it is a computation node
-                if computation_tabs.count() >= 1:
-                    # and should contain a div with classes tab-pane and active
-                    active_pane = node_el.locator(".tab-pane.active")
-                    assert active_pane.count() >= 1, (
-                        f"Code node {node.id} ({node.type}) output "
-                        f"area has no active tab-pane"
-                    )
-                    # the output tab content has class tab-content
-                    tab_content = active_pane.locator(".tab-content")
-                    # wait for the tab-content to be visible
-                    tab_content.wait_for(state="visible", timeout=3000)
-                    assert tab_content.count() >= 1, (
-                        f"Code node {node.id} ({node.type}) output "
-                        f"area is missing .tab-content"
-                    )
-                    # The output box should contain a title h6 with text "Output" 
-                    output_heading = tab_content.locator("h6").filter(
-                        has_text="Output"
-                    )
-                    output_heading.first.wait_for(state="visible", timeout=10000)
-                    assert output_heading.count() >= 1, (
-                        f"Node {node.id} ({node.type}) is missing its "
-                        f"output heading"
-                    )
-                    # and should not contain a div below the h6 with text "No output available."
-                    no_output_msg = tab_content.locator("div").filter(
-                        has_text="No output available."
-                    )
-                    no_output_msg.first.wait_for(state="hidden", timeout=10000)
-                    assert no_output_msg.count() == 0, (
-                        f"Node {node.id} ({node.type}) is not missing its "
-                        f"no output message"
-                    )
-                    # and should not contain a title h6 with text "Error"
-                    error_heading = tab_content.locator("h6").filter(
-                        has_text="Error"
-                    )
-                    error_heading.first.wait_for(state="hidden", timeout=10000)
-                    assert error_heading.count() == 0, (
-                        f"Node {node.id} ({node.type}) is not missing its "
-                        f"error heading"
-                    )
-                    # and should not contain a title h6 with text "Warning"
-                    warning_heading = tab_content.locator("h6").filter(
-                        has_text="Warning"
-                    )
-                    warning_heading.first.wait_for(state="hidden", timeout=10000)
-                    assert warning_heading.count() == 0, (
-                        f"Node {node.id} ({node.type}) is not missing its "
-                        f"warning heading"
-                    )
-                    # its content should be a text with the output file path following the pattern: <uuid_regex>.data
-                    output_content = tab_content.locator("div").filter(
-                        has_text=re.compile(r"Saved to file\:\s\w+_\w+.data$")
-                    )
-                    output_content.first.wait_for(state="visible", timeout=10000)
-                    assert output_content.count() >= 1, (
-                        f"Node {node.id} ({node.type}) is missing its "
-                        f"output content"
-                    )
+                active_pane = node_el.locator(".tab-pane.active")
+                active_pane.first.wait_for(state="visible", timeout=5000)
 
-            # Check provenance graph is rendered correctly for nodes that have it.
+                # table mode → MUI TableCell; image mode → <img> elements.
+                table_cells = active_pane.locator(
+                    "td.MuiTableCell-root, th.MuiTableCell-root"
+                )
+                images = active_pane.locator("img")
+                assert table_cells.count() >= 1 or images.count() >= 1, (
+                    f"VIS_SIMPLE node {node.id}: output tab is visible but "
+                    f"contains neither table cells nor images"
+                )
+            # text mode: no output tab → nothing further to assert.
+
+        self._save_screenshot(request)
+        self.__class__._node_execution_success_by_spec[self.spec.filepath] = True
+
+
+    # -- 5. Provenance graph -------------------------------------------------
+
+    def test_provenance_graph(self, loaded_workflow, request):
+        """After executing every playable node, each node that exposes a
+        provenance tab must render at least one React Flow node card."""
+        if not self.__class__._node_execution_success_by_spec.get(
+            self.spec.filepath
+        ):
+            pytest.fail(
+                "Node execution must succeed before the provenance check; "
+                "test_node_execution failed or did not complete for this workflow."
+            )
+
+        self._execute_all_playable_nodes()
+
+        for node in self.spec.nodes:
+            if not node.has_play_button:
+                continue
+
+            node_el = self._node_locator(node)
+
+            # ---------------------------------------------------------------
+            # Check provenance graph is rendered correctly
+            # ---------------------------------------------------------------
+
+            # If the node has a provenance tab,
+            # check if the provenance graph is rendered correctly
             provenance_tab = node_el.locator(
                 '.nav-link[data-rr-ui-event-key="provenance"]'
             )
@@ -656,26 +744,12 @@ class TestWorkflowCanvas:
             provenance_tab.first.wait_for(state="visible", timeout=10000)
             provenance_tab.click(force=True)
 
-            # Canvas is inside the provenance tab pane (active after click)
-            # The provenance pane contains a reagraph canvas element (GraphCanvas)
+            # The provenance pane contains a React Flow graph (SVG-based).
+            # Wait for at least one node card to appear inside the inner RF canvas.
             provenance_pane = node_el.locator(".tab-pane.active.show")
-            canvas = provenance_pane.locator("canvas")
-            canvas.first.wait_for(state="visible", timeout=10000)
-            assert canvas.count() >= 1, (
-                f"Node {node.id} ({node.type}) is missing its canvas"
+            prov_node = provenance_pane.locator(".react-flow__node")
+            prov_node.first.wait_for(state="visible", timeout=10000)
+            assert prov_node.count() >= 1, (
+                f"Node {node.id} ({node.type}) provenance graph rendered no nodes"
             )
-
-            # The provenance graph uses reagraph (WebGL/Three.js), not 2D canvas.
-            has_content = canvas.first.evaluate("""
-                (canvas) => {
-                    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-                    if (!gl) return false;
-                    const w = canvas.width, h = canvas.height;
-                    if (w < 2 || h < 2) return false;
-                    return true;
-                }
-            """)
-            assert has_content, (
-                f"Node {node.id} ({node.type}) provenance canvas appears empty "
-                f"(no drawn content detected)"
-            )
+        # self._save_screenshot(request)

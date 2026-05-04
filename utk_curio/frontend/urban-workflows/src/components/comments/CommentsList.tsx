@@ -8,13 +8,14 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useUserContext } from "../../providers/UserProvider";
+import { useToastContext } from "../../providers/ToastProvider";
 
 export interface IComment {
   id: number;
   text: string;
   user: {
     name: string;
-    photo: string;
+    photo: string | null;
   };
   canDelete: boolean;
   resolved: boolean;
@@ -32,11 +33,12 @@ export const CommentsList = ({
   toggleResolveComment: (commentId: number) => void;
 }) => {
   const { user } = useUserContext();
+  const { showToast } = useToastContext();
   const [newCommentText, setNewCommentText] = useState("");
 
   const onAddComment = () => {
-    if (newCommentText.trim() === "") return alert("Please write a comment");
-    if (!user) return alert("Please login to comment");
+    if (newCommentText.trim() === "") { showToast("Please write a comment before submitting.", "warning"); return; }
+    if (!user) { showToast("Please log in to post a comment.", "warning"); return; }
 
     addComment({
       id: comments.length + 1,
@@ -74,7 +76,7 @@ export const CommentsList = ({
             }}
           >
             <img
-              src={comment.user.photo}
+              src={comment.user.photo ?? undefined}
               alt={comment.user.name}
               style={imageStyles}
             />

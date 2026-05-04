@@ -20,10 +20,11 @@ on:
 jobs:
   test-compose:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: 🔨 Build all service images in parallel
         run: docker compose -p curio build --parallel
@@ -77,24 +78,49 @@ jobs:
       - name: 🧪 Run backend unit tests
         run: |
           docker compose -p curio exec curio \
-            python -m unittest discover -s utk_curio/backend/tests -t . -p "test_*.py" -v
+            bash scripts/test.sh --backend-only --use-existing
 
       - name: 🧪 Run sandbox unit tests
         run: |
           docker compose -p curio exec curio \
-            python -m unittest discover -s utk_curio/sandbox/tests -t . -p "test_*.py" -v
+            bash scripts/test.sh --sandbox-only --use-existing
 
       - name: 🐍 Set up Python (for e2e)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
-      - name: 🎭 Install Playwright and run e2e tests
+      - name: 🔧 Give .curio/ permissions for host-side tests
         run: |
-          pip install -r requirements.txt
-          python -m playwright install chromium
-          cd utk_curio/backend
-          CURIO_E2E_USE_EXISTING=1 PYTHONPATH="$GITHUB_WORKSPACE" python -m pytest tests/test_frontend/ -v
+          # Docker creates .curio/ as root; the host runner needs write
+          # access to create .curio/playwright/expected/ for programmatic
+          # ground-truth data.
+          sudo chmod -R a+rwx .curio/ 2>/dev/null || mkdir -p .curio/playwright/expected
+
+      - name: 🎭 Run e2e tests
+        run: |
+          bash scripts/test.sh --e2e-only --use-existing \
+            --allure-dir "$GITHUB_WORKSPACE/allure-results"
+
+      - name: 📊 Install Allure CLI
+        if: always()
+        run: |
+          ALLURE_VERSION=2.32.0
+          wget -q "https://github.com/allure-framework/allure2/releases/download/${ALLURE_VERSION}/allure-${ALLURE_VERSION}.tgz"
+          tar -xzf "allure-${ALLURE_VERSION}.tgz"
+          echo "$PWD/allure-${ALLURE_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: 📊 Generate Allure report
+        if: always()
+        run: allure generate allure-results -o allure-report --clean
+
+      - name: 📤 Upload Allure report artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: allure-report
+          path: allure-report
+          retention-days: 30
 
       - name: Check frontend availability
         run: |

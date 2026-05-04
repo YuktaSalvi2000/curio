@@ -1,5 +1,6 @@
-import { BoxType } from "./constants";
+import { NodeType } from "./constants";
 import { formatDate, mapTypes } from "./utils/formatters";
+import { getToken } from "./utils/authApi";
 // import { pythonCode } from "./pythonWrapper";
 
 export class PythonInterpreter {
@@ -16,11 +17,19 @@ export class PythonInterpreter {
         input: string,
         inputTypes: string[],
         callback: any,
-        boxType: BoxType,
+        nodeType: NodeType,
         nodeId: string,
         workflow_name: string,
-        boxExecProv: any
+        nodeExecProv: any
     ) {
+        const callbackError = (message: string) => {
+            callback({
+                stdout: [],
+                stderr: message,
+                output: { path: "", dataType: "str" },
+            });
+        };
+
         let lines = userCode.split("\n");
 
         let unifiedLines = "";
@@ -32,19 +41,38 @@ export class PythonInterpreter {
 
         console.log("unifiedLines", unifiedLines);
 
+        const _token = getToken();
         fetch(process.env.BACKEND_URL + "/processPythonCode", {
             method: "POST",
             body: JSON.stringify({
                 code: unifiedLines,
                 input: input, // new
                 inputTypes: inputTypes, // new
-                boxType: boxType // new
+                nodeType: nodeType // new
             }),
             headers: {
                 "Content-type": "application/json; charset=UTF-8",
+                ...(_token ? { "Authorization": `Bearer ${_token}` } : {}),
             },
         })
-            .then((response) => response.json())
+            .then(async (response) => {
+                let json: any = null;
+                try {
+                    json = await response.json();
+                } catch (error: any) {
+                    throw new Error(
+                        `Backend returned invalid JSON (${response.status}): ${error?.message || String(error)}`
+                    );
+                }
+
+                if (!response.ok) {
+                    throw new Error(
+                        json?.stderr || `Backend execution failed with status ${response.status}`
+                    );
+                }
+
+                return json;
+            })
             .then((json) => {
                 let endTime = formatDate(new Date());
 
@@ -63,24 +91,24 @@ export class PythonInterpreter {
                     }
                 }
 
-                boxExecProv(
+                nodeExecProv(
                     startTime,
                     endTime,
                     workflow_name,
-                    boxType + "-" + nodeId,
+                    nodeType + "-" + nodeId,
                     mapTypes(typesInput),
                     mapTypes(typesOuput),
                     unresolvedUserCode
                 );
 
-                // fetch(process.env.BACKEND_URL+"/boxExecProv", {
+                // fetch(process.env.BACKEND_URL+"/nodeExecProv", {
                 //     method: "POST",
                 //     body: JSON.stringify({
                 //         data: {
                 //             activityexec_start_time: startTime,
                 //             activityexec_end_time: endTime,
                 //             workflow_name,
-                //             activity_name: boxType+"_"+nodeId,
+                //             activity_name: nodeType+"_"+nodeId,
                 //             types_input: mapTypes(typesInput),
                 //             types_output: mapTypes(typesOuput),
                 //             activity_source_code: userCode
@@ -90,10 +118,13 @@ export class PythonInterpreter {
                 //         "Content-type": "application/json; charset=UTF-8",
                 //     }
                 // }).then((value: any) => {
-                //     updateBoxGraph(workflow_name, boxType+"_"+nodeId);
+                //     updateBoxGraph(workflow_name, nodeType+"_"+nodeId);
                 // })
 
                 callback(json);
+            })
+            .catch((error: any) => {
+                callbackError(error?.message || String(error));
             });
     }
 }
