@@ -1,13 +1,6 @@
-<<<<<<< HEAD
-/* Modified for Mock gramamr plugin testing - not part of actual registry descriptors */
-
-import { BoxType, SupportedType } from '../constants';
-=======
 import { NodeType, SupportedType } from '../constants';
->>>>>>> upstream/main
 import { Position } from 'reactflow';
 import {
-  faMagnifyingGlassChart,
   faSquareRootVariable,
   faUpload,
   faDownload,
@@ -17,17 +10,17 @@ import {
   faCodeMerge,
   faTable,
   faCube,
+  faCubes,
+  faCity,
   faChartLine,
-  faChartBar,
+  faChartColumn,
   faCopy,
-<<<<<<< HEAD
-  faCodeBranch,
-=======
   faRectangleList,
   faMap,
->>>>>>> upstream/main
+  faAreaChart,
+  faMapLocationDot,
 } from '@fortawesome/free-solid-svg-icons';
-import { faJs } from '@fortawesome/free-brands-svg-icons';
+import { faJs, faPython } from '@fortawesome/free-brands-svg-icons';
 
 import { registerNode } from './nodeRegistry';
 
@@ -39,22 +32,18 @@ import {
   flowSwitchHandles,
   useCodeNodeLifecycle,
   useDataExportLifecycle,
-  useGrammarLifecycle,
-  useUtkLifecycle,
+  useVegaLifecycle,
   useSimpleVisLifecycle,
   useFlowSwitchLifecycle,
   useMergeFlowLifecycle,
   useDataPoolLifecycle,
-<<<<<<< HEAD
-  useVegaLifecycle,
-} from '../adapters/box';
-import { faAreaChart } from '@fortawesome/free-solid-svg-icons/faAreaChart';
-=======
   useDataSummaryLifecycle,
   useAutkMapLifecycle,
   useAutkPlotLifecycle,
+  useAutkComputeLifecycle,
+  useAutkDbLifecycle,
+  useGrammarLifecycle,
 } from '../adapters/node';
->>>>>>> upstream/main
 
 const ALL_TYPES = [
   SupportedType.DATAFRAME,
@@ -163,7 +152,7 @@ registerNode({
   outputPorts: [{ types: TABULAR_DATA, cardinality: '1' }],
   editor: 'none',
   inPalette: true,
-  paletteOrder: 5,
+  paletteOrder: 13,
   description: 'The Data Pool is reponsible for storing data that can be interacted by all connected visualizations. Interactions can also be propagated to other Data Pools.',
   hasCode: false,
   hasWidgets: false,
@@ -185,8 +174,8 @@ registerNode({
 registerNode({
   id: NodeType.COMPUTATION_ANALYSIS,
   category: 'computation',
-  label: 'Computation Analysis',
-  icon: faMagnifyingGlassChart,
+  label: 'Python Computation',
+  icon: faPython,
   inputPorts: [{ types: ALL_TYPES, cardinality: '[1,n]' }],
   outputPorts: [{ types: ALL_TYPES, cardinality: '[1,n]' }],
   editor: 'code',
@@ -294,6 +283,7 @@ registerNode({
   grammarId: 'vega-lite',
   inPalette: true,
   paletteOrder: 7,
+  badge: 'VEGA',
   description: 'The Vega box is responsible for visualizing 2D plots.',
   hasCode: false,
   hasWidgets: true,
@@ -340,7 +330,7 @@ registerNode({
 });
 
 registerNode({
-  id: BoxType.VIS_D3,
+  id: NodeType.VIS_D3,
   category: 'vis_grammar',
   label: 'D3',
   icon: faAreaChart,
@@ -374,7 +364,7 @@ registerNode({
 
 
 
-// ── Simple visualization boxes ──────────────────────────────────────────
+// ── Simple visualization nodes ──────────────────────────────────────────
 
 registerNode({
   id: NodeType.VIS_SIMPLE,
@@ -407,21 +397,23 @@ registerNode({
   id: NodeType.AUTK_PLOT,
   category: 'vis_simple',
   label: 'AutkPlot',
-  icon: faChartLine,
+  icon: faChartColumn,
   inputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON, SupportedType.GEODATAFRAME, SupportedType.DATAFRAME], cardinality: '1' }],
-  outputPorts: [],
+  outputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON, SupportedType.GEODATAFRAME, SupportedType.DATAFRAME], cardinality: '[0,1]' }],
   editor: 'code',
   inPalette: true,
   paletteOrder: 10,
-  description: 'Renders charts using autk-plot. Supports scatterplot, barchart, linechart, heatmatrix, parallel-coordinates, and table. Edit the code to configure the chart type and data mapping.',
+  badge: 'AUTK',
+  description: 'Renders charts using autk-plot. Supports scatterplot, barchart, linechart, heatmatrix, parallel-coordinates, and table. Bidirectional brushing with AutkMap when linked.',
   hasCode: true,
   hasWidgets: false,
   hasGrammar: false,
   adapter: {
-    handles: inputOnly(),
+    handles: withBidirectional(standardInOut()),
     editor: { code: true, grammar: false, widgets: false },
-    container: { handleType: 'in' },
+    container: { handleType: 'in/out' },
     inputIconType: '1',
+    outputIconType: '1',
     showTemplateModal: false,
     useLifecycle: useAutkPlotLifecycle,
   },
@@ -431,23 +423,76 @@ registerNode({
   id: NodeType.AUTK_MAP,
   category: 'vis_simple',
   label: 'AutkMap',
-  icon: faMap,
-  inputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON], cardinality: '1' }],
-  outputPorts: [],
+  icon: faCity,
+  inputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON, SupportedType.GEODATAFRAME], cardinality: '1' }],
+  outputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON, SupportedType.GEODATAFRAME], cardinality: '[0,1]' }],
   editor: 'code',
   inPalette: true,
   paletteOrder: 9,
-  description: 'Renders urban 3D map layers using autk-map. Receives a layer array from a JS Computation node and renders it to a canvas. Edit the code to customize the rendering.',
+  badge: 'AUTK',
+  description: 'Renders urban 3D map layers using autk-map. Accepts an Autark layer array, a FeatureCollection, or a GeoDataFrame. Bidirectional brushing with AutkPlot when linked.',
   hasCode: true,
   hasWidgets: false,
   hasGrammar: false,
   adapter: {
-    handles: inputOnly(),
+    handles: withBidirectional(standardInOut()),
     editor: { code: true, grammar: false, widgets: false },
-    container: { handleType: 'in' },
+    container: { handleType: 'in/out' },
     inputIconType: '1',
+    outputIconType: '1',
     showTemplateModal: false,
     useLifecycle: useAutkMapLifecycle,
+  },
+});
+
+registerNode({
+  id: NodeType.AUTK_COMPUTE,
+  category: 'computation',
+  label: 'AutkCompute',
+  icon: faCubes,
+  inputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON, SupportedType.GEODATAFRAME], cardinality: '1' }],
+  outputPorts: [{ types: [SupportedType.LIST, SupportedType.JSON, SupportedType.GEODATAFRAME], cardinality: '1' }],
+  editor: 'code',
+  inPalette: true,
+  paletteOrder: 12,
+  badge: 'AUTK',
+  description: 'GPU compute on urban layers via autk-compute. Receives a layer array, returns a transformed layer array. Runs on a hidden offscreen canvas.',
+  hasCode: true,
+  hasWidgets: false,
+  hasGrammar: false,
+  adapter: {
+    handles: standardInOut(),
+    editor: { code: true, grammar: false, widgets: false },
+    container: { handleType: 'in/out', disablePlay: false },
+    inputIconType: '1',
+    outputIconType: '1',
+    showTemplateModal: false,
+    useLifecycle: useAutkComputeLifecycle,
+  },
+});
+
+registerNode({
+  id: NodeType.AUTK_DB,
+  category: 'data',
+  label: 'AutkDB',
+  icon: faMapLocationDot,
+  inputPorts: [],
+  outputPorts: [{ types: [SupportedType.LIST], cardinality: '1' }],
+  editor: 'code',
+  inPalette: true,
+  paletteOrder: 5,
+  badge: 'AUTK',
+  description: 'Server-side spatial database via autk-db. Loads OSM data through Overpass and emits a layer array downstream.',
+  hasCode: true,
+  hasWidgets: false,
+  hasGrammar: false,
+  adapter: {
+    handles: outputOnly(),
+    editor: { code: true, grammar: false, widgets: true },
+    container: { handleType: 'out', disablePlay: false },
+    outputIconType: '1',
+    showTemplateModal: false,
+    useLifecycle: useAutkDbLifecycle,
   },
 });
 

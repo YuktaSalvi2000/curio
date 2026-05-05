@@ -7,7 +7,7 @@ import { IPropagation } from '../providers/FlowProvider';
 
 export interface PortDef {
   types: SupportedType[];
-  cardinality?: '0' | '1' | 'n' | '[1,n]' | '[1,2]' | '2';
+  cardinality?: '0' | '1' | 'n' | '[0,1]' | '[1,n]' | '[1,2]' | '2';
 }
 
 export type EditorType = 'code' | 'widgets' | 'grammar' | 'none';
@@ -121,11 +121,8 @@ export interface LifecycleResult {
  * 4. Must not call `nodeState.setSendCodeCallback` directly — return
  *    `setSendCodeCallbackOverride` instead so UniversalNode can wire it.
  */
-<<<<<<< HEAD
-export type BoxLifecycleHook = (data: BoxLifecycleData, boxState: UseBoxStateReturn, descriptor: BoxDescriptor) => LifecycleResult;
-=======
+
 export type NodeLifecycleHook = (data: NodeLifecycleData, nodeState: UseNodeStateReturn) => LifecycleResult;
->>>>>>> upstream/main
 
 /* ── Full adapter for a node type ──────────────────────────────────── */
 
@@ -152,6 +149,8 @@ export interface NodeDescriptor {
   grammarId?: string;
   inPalette: boolean;
   paletteOrder?: number;
+  /** Optional small label rendered as a badge over the icon in ToolsMenu (e.g. "AUTK", "Vega-Lite"). */
+  badge?: string;
   description: string;
   hasCode: boolean;
   hasWidgets: boolean;

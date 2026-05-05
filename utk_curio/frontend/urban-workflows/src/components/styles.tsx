@@ -56,6 +56,9 @@ import { useCode } from "../hook/useCode";
 import { TrillGenerator } from "TrillGenerator";
 import { ICodeData } from "types";
 
+const MIN_NODE_WIDTH = 200;
+const MIN_NODE_HEIGHT = 150;
+
 // Node Container
 export const NodeContainer = ({
     data,
@@ -231,11 +234,11 @@ export const NodeContainer = ({
     }, [minimized]);
 
     useEffect(() => {
-        if (nodeWidth == undefined) {
+        if (nodeWidth == undefined || nodeWidth < MIN_NODE_WIDTH) {
             setCurrentNodeWidth(525);
         }
 
-        if (nodeHeight == undefined) {
+        if (nodeHeight == undefined || nodeHeight < MIN_NODE_HEIGHT) {
             setCurrentNodeHeight(350);
         }
     }, []);
@@ -256,8 +259,8 @@ export const NodeContainer = ({
         let startHeight = 0;
 
         function resize(e: any) {
-            const newWidth = startWidth + (e.clientX - startX);
-            const newHeight = startHeight + (e.clientY - startY);
+            const newWidth = Math.max(MIN_NODE_WIDTH, startWidth + (e.clientX - startX));
+            const newHeight = Math.max(MIN_NODE_HEIGHT, startHeight + (e.clientY - startY));
 
             resizable.style.width = newWidth + "px";
             resizable.style.height = newHeight + "px";
@@ -272,18 +275,22 @@ export const NodeContainer = ({
 
             const newWidth = resizable.offsetWidth;
             const newHeight = resizable.offsetHeight;
+            // Read the live node data instead of the closure-captured `data`,
+            // which can be stale (e.g. captured before upstream `input` flowed
+            // in) and would overwrite live fields when spread back.
+            const liveData = getNodes().find((n) => n.id === nodeId)?.data ?? data;
             if (dashboardOn) {
-                if (data.dashboardWidth !== newWidth || data.dashboardHeight !== newHeight) {
+                if (liveData.dashboardWidth !== newWidth || liveData.dashboardHeight !== newHeight) {
                     updateDataNode(nodeId, {
-                        ...data,
+                        ...liveData,
                         dashboardWidth: newWidth,
                         dashboardHeight: newHeight,
                     });
                 }
             } else {
-                if (data.nodeWidth !== newWidth || data.nodeHeight !== newHeight) {
+                if (liveData.nodeWidth !== newWidth || liveData.nodeHeight !== newHeight) {
                     updateDataNode(nodeId, {
-                        ...data,
+                        ...liveData,
                         nodeWidth: newWidth,
                         nodeHeight: newHeight,
                     });
@@ -510,10 +517,10 @@ export const NodeContainer = ({
                 <div style={{...goalInput, ...(currentNodeWidth ? {width: (currentNodeWidth-4)+"px"} : {}), ...((data.suggestionType != "none" && data.suggestionType != undefined) ? {opacity: "50%", pointerEvents: "none"} : {})}} className={"nodrag"}>
                     <label htmlFor={nodeId+"_goal_box_input"}>Subtask: </label>
                     <input id={nodeId+"_goal_box_input"} type={"text"} style={{width: "65%", border: "none", background: "transparent", color: "rgb(251, 252, 246)", borderBottom: "1px solid rgb(46, 91, 136)"}} value={goal} onBlur={() => {updateDataGoal(goal)}} onChange={(value: any) => {setGoal(value.target.value)}}/>
-                    {data.nodeType != NodeType.VIS_UTK ? <button style={buttonStyle} onClick={() => {
+                    <button style={buttonStyle} onClick={() => {
                         if(AIModeRef.current)
                             clickGenerateContentNode();
-                    }} >Get code</button> : null}
+                    }} >Get code</button>
                 </div> : null
             }
 
@@ -1064,7 +1071,6 @@ const nodeTypeBorderColor: Record<string, string> = {
     [NodeType.MERGE_FLOW]: "#8e44ad",
     [NodeType.DATA_POOL]: "#8e44ad",
     [NodeType.CONSTANTS]: "#8e44ad",
-    [NodeType.VIS_UTK]: "#1abc9c",
     [NodeType.VIS_VEGA]: "#1abc9c",
     [NodeType.VIS_SIMPLE]: "#1abc9c",
     [NodeType.COMMENTS]: "#95a5a6",

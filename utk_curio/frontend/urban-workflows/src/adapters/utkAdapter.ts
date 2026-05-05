@@ -1,5 +1,5 @@
 import { GrammarAdapter, registerGrammarAdapter } from '../registry/grammarAdapter';
-import { BoxType, ResolutionTypeUTK, VisInteractionType } from "../constants";
+import { NodeType, ResolutionType, VisInteractionType } from "../constants";
 import { Environment, GrammarInterpreter } from "utk";
 import { get_camera } from "../utils/parsing";
 import { fetchData } from "../services/api";
@@ -109,7 +109,7 @@ export const utkAdapter: GrammarAdapter = {
           knotToLayerDict[k.id] = k.out_name;
           return k.id;
         }),
-        interactions: generatedGrammar.ex_knots.map(() => ResolutionTypeUTK.NONE),
+        interactions: generatedGrammar.ex_knots.map(() => ResolutionType.OVERWRITE),
         widgets: [{ type: "TOGGLE_KNOT" }],
         grammar_type: "MAP",
       },
@@ -157,7 +157,6 @@ export const utkAdapter: GrammarAdapter = {
     console.log('GrammarInterpreter created successfully');
 outputCallback?.(nodeId, data);
 console.log('outputCallback called');
-    outputCallback?.(nodeId, data);
   },
 };
 

@@ -5,14 +5,8 @@ export enum NodeType {
   COMPUTATION_ANALYSIS = "COMPUTATION_ANALYSIS",
   DATA_SUMMARY = "DATA_SUMMARY",
   FLOW_SWITCH = "FLOW_SWITCH",
-  VIS_UTK = "VIS_UTK",
   VIS_VEGA = "VIS_VEGA",
-  // For testing grammar independence - not tied to Vega or UTK
-  VIS_MOCK_GRAMMAR = 'VIS_MOCK_GRAMMAR',
-  VIS_D3 = "VIS_D3",
-  VIS_TABLE = "VIS_TABLE",
-  VIS_TEXT = "VIS_TEXT",
-  VIS_IMAGE = "VIS_IMAGE",
+  VIS_SIMPLE = "VIS_SIMPLE",
   CONSTANTS = "CONSTANTS",
   DATA_POOL = "DATA_POOL",
   MERGE_FLOW = "MERGE_FLOW",
@@ -20,6 +14,10 @@ export enum NodeType {
   JS_COMPUTATION = "JS_COMPUTATION",
   AUTK_MAP = "AUTK_MAP",
   AUTK_PLOT = "AUTK_PLOT",
+  AUTK_COMPUTE = "AUTK_COMPUTE",
+  AUTK_DB = "AUTK_DB",
+  VIS_UTK = "VIS_UTK",
+  VIS_D3 = "VIS_D3",
 }
 
 export enum EdgeType {
@@ -58,12 +56,6 @@ export enum ResolutionType {
   OVERWRITE = "OVERWRITE", // last interacted with overwrites other interactions
   MERGE_AND = "MERGE_AND", // all plots need to interact
   MERGE_OR = "MERGE_OR", // at least one plot needs to interact
-}
-
-export enum ResolutionTypeUTK {
-  PICKING = "PICKING", // all coordinates of the object need to be selected for the object to be considered selected
-  BRUSHING = "BRUSHING", // at least one coordinate of the object need to be selected for the object to be considered selected
-  NONE = "NONE",
 }
 
 export enum AccessLevelType {

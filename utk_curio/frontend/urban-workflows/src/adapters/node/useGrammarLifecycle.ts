@@ -1,6 +1,6 @@
 
 import { useRef } from 'react';
-import { BoxLifecycleHook } from '../../registry/types';
+import { NodeLifecycleHook } from '../../registry/types';
 import { getNodeDescriptor } from '../../registry/nodeRegistry';
 import { VisualizationIR } from '../../integration_layer/ir';
 import { executeVisualization } from '../../integration_layer/visualizationIntegrationLayer';
@@ -12,7 +12,7 @@ const metrics = {
   failure: 0,
 };
 
-export const useGrammarLifecycle: BoxLifecycleHook = (data, boxState) => {
+export const useGrammarLifecycle: NodeLifecycleHook = (data, boxState) => {
   const stateRef = useRef<any>(null);
 
   const applyGrammar = async (spec: string) => {

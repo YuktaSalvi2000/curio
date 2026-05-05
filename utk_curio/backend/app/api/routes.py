@@ -86,6 +86,7 @@ conversation = {}
 tokens_left = 200000 # Tokens allowed per minute
 last_refresh = time.time() # Last time that 60 minutes elapsed
 
+
 inputTypesSupported = {
     "DATA_LOADING": [],
     "DATA_EXPORT": ["DATAFRAME", "GEODATAFRAME"],
@@ -102,6 +103,27 @@ inputTypesSupported = {
     "CONSTANTS": [],
     "DATA_POOL": ["DATAFRAME", "GEODATAFRAME"],
     "MERGE_FLOW": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"],
+}
+
+# In-memory node-type registry populated by the frontend via POST /node-types.
+# Initialised with hardcoded defaults so templates work even if the frontend
+# hasn't registered yet (e.g. backend starts before frontend).
+_node_type_registry: dict = {
+    "DATA_LOADING":          {"inputTypes": [],                                                             "outputTypes": ["DATAFRAME", "GEODATAFRAME"]},
+    "DATA_EXPORT":           {"inputTypes": ["DATAFRAME", "GEODATAFRAME"],                                 "outputTypes": []},
+    "DATA_TRANSFORMATION":   {"inputTypes": ["DATAFRAME", "GEODATAFRAME"],                                 "outputTypes": ["DATAFRAME", "GEODATAFRAME"]},
+    "COMPUTATION_ANALYSIS":  {"inputTypes": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"],        "outputTypes": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"]},
+    "FLOW_SWITCH":           {"inputTypes": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"],        "outputTypes": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"]},
+    "VIS_VEGA":              {"inputTypes": ["DATAFRAME"],                                                 "outputTypes": ["DATAFRAME"]},
+    "VIS_SIMPLE":            {"inputTypes": ["DATAFRAME", "GEODATAFRAME", "VALUE"],                        "outputTypes": ["DATAFRAME", "GEODATAFRAME", "VALUE"]},
+    "CONSTANTS":             {"inputTypes": [],                                                             "outputTypes": ["VALUE"]},
+    "DATA_POOL":             {"inputTypes": ["DATAFRAME", "GEODATAFRAME"],                                 "outputTypes": ["DATAFRAME", "GEODATAFRAME"]},
+    "MERGE_FLOW":            {"inputTypes": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"],        "outputTypes": ["DATAFRAME", "GEODATAFRAME", "VALUE", "LIST", "JSON"]},
+    "DATA_SUMMARY":          {"inputTypes": ["DATAFRAME", "GEODATAFRAME"],                                 "outputTypes": ["JSON"]},
+    "AUTK_DB":               {"inputTypes": [],                                                             "outputTypes": ["LIST"]},
+    "AUTK_COMPUTE":          {"inputTypes": ["LIST", "JSON", "GEODATAFRAME"],                              "outputTypes": ["LIST", "JSON", "GEODATAFRAME"]},
+    "AUTK_MAP":              {"inputTypes": ["LIST", "JSON", "GEODATAFRAME"],                              "outputTypes": ["LIST", "JSON", "GEODATAFRAME"]},
+    "AUTK_PLOT":             {"inputTypes": ["LIST", "JSON", "GEODATAFRAME", "DATAFRAME"],                 "outputTypes": ["LIST", "JSON", "GEODATAFRAME", "DATAFRAME"]},
 }
 
 outputTypesSupported = {
@@ -422,27 +444,6 @@ def install_packages():
         return response.json()
     finally:
         pass
-
-@bp.route('/toLayers', methods=['POST'])
-@require_auth
-def toLayers():
-
-    if(request.json['geojsons'] == None):
-        abort(400, "geojsons were not included in the post request")
-    try:
-        import geopandas as gpd
-        for geojson in request.json['geojsons']:
-            gpd.GeoDataFrame.from_features(geojson['features'])
-    except Exception as e:
-        print("GeoPandas validation failed:", e)
-    response = _sandbox_session.post(api_address+":"+str(api_port)+"/toLayers",
-                             data=json.dumps({
-                                 "geojsons": request.json['geojsons']
-                             }),
-                             headers={"Content-Type": "application/json"},
-                             timeout=60)
-
-    return response.json()
 
 @bp.route('/signin', methods=['POST'])
 def signin_legacy():
