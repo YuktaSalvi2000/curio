@@ -12,7 +12,7 @@ const metrics = {
   failure: 0,
 };
 
-export const useGrammarLifecycle: NodeLifecycleHook = (data, boxState) => {
+export const useGrammarLifecycle: NodeLifecycleHook = (data, nodeState) => {
   const stateRef = useRef<any>(null);
 
   const applyGrammar = async (spec: string) => {
@@ -44,7 +44,7 @@ export const useGrammarLifecycle: NodeLifecycleHook = (data, boxState) => {
         data: data.input,
         nodeId: data.nodeId,
         containerId: outputId,
-        boxType: data.nodeType,
+        nodeType: data.nodeType,
         options: {
           outputCallback: data.outputCallback,
           interactionsCallback: data.interactionsCallback,
@@ -54,30 +54,30 @@ export const useGrammarLifecycle: NodeLifecycleHook = (data, boxState) => {
 
       console.log('Constructed VisualizationIR', ir);
 
-      boxState.setOutput({ code: 'exec', content: '', outputType: '' });
+      nodeState.setOutput({ code: 'exec', content: '', outputType: '' });
 
       const result = await executeVisualization(ir);
 
-      const end = performance.now();
+      // const end = performance.now();
 
-      const duration = end - start;
+      // const duration = end - start;
 
-      console.log('📊 METRICS (SUCCESS)', {
+      /*console.log('📊 METRICS (SUCCESS)', {
       executionTimeMs: duration,
       inputSizeBytes: metrics.inputSize,
       grammarId: descriptor.grammarId,
       nodeType: data.nodeType,
-    });
+    });*/
 
       if (!result.success) {
         throw new Error(result.error || 'Visualization execution failed');
       }
 
-      boxState.setOutput({ code: 'success', content: '', outputType: '' });
+      nodeState.setOutput({ code: 'success', content: '', outputType: '' });
       data.outputCallback(data.nodeId, data.input);
 
     } catch (error: any) {
-      boxState.setOutput({
+      nodeState.setOutput({
         code: 'error',
         content: error?.message || 'Visualization execution failed',
         outputType: '',

@@ -114,10 +114,10 @@ export interface VisualizationIR {
   container?: HTMLElement | null;
 
   /**
-   * Optional Curio box type / node type for logging, fallback routing,
+   * Optional Curio node type for logging, fallback routing,
    * legacy hook support, or adapter debugging.
    */
-  boxType?: string;
+  nodeType?: string;
 
   /**
    * Optional execution settings shared across backends.

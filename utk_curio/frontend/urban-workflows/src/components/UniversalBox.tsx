@@ -1,43 +1,76 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import CSS from "csstype";
 import { Handle, Edge, useEdges } from 'reactflow';
-import { BoxContainer } from './styles';
-import BoxEditor from './editing/BoxEditor';
+import { NodeContainer } from './styles';
+import NodeEditor from './editing/NodeEditor';
 import DescriptionModal from './DescriptionModal';
 import TemplateModal from './TemplateModal';
 import { OutputIcon } from './edges/OutputIcon';
 import { InputIcon } from './edges/InputIcon';
 import { getNodeDescriptor } from '../registry/nodeRegistry';
-import { useBoxState } from '../hook/useBoxState';
-import { HandleDef } from '../registry/types';
-// @ts-expect-error
-import './Box.css';
-// @ts-expect-error
+import { useNodeState } from '../hook/useNodeState';
+import { HandleDef, TIconCardinality } from '../registry/types';
+import { useFlowContext } from '../providers/FlowProvider';
+import './Node.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-function UniversalBox({ data, isConnectable }: { data: any; isConnectable: boolean }) {
+const UniversalNode = React.memo(function UniversalNode({ data, isConnectable }: { data: any; isConnectable: boolean }) {
   const descriptor = getNodeDescriptor(data.nodeType);
   const { adapter } = descriptor;
 
-  const boxState = useBoxState(data, descriptor.id);
-  const lifecycle = adapter.useLifecycle(data, boxState, descriptor);
+  const nodeState = useNodeState(data, descriptor.id);
+  const lifecycle = adapter.useLifecycle(data, nodeState);
   const edges = useEdges();
 
-  const sendCode = lifecycle.sendCodeOverride ?? boxState.sendCode;
-  const setSendCodeCallback = lifecycle.setSendCodeCallbackOverride ?? boxState.setSendCodeCallback;
-  const setOutputCallback = lifecycle.setOutputCallbackOverride ?? boxState.setOutput;
-  const output = lifecycle.outputOverride ?? boxState.output
+  const sendCode = lifecycle.sendCodeOverride ?? nodeState.sendCode;
+  const setSendCodeCallback = lifecycle.setSendCodeCallbackOverride ?? nodeState.setSendCodeCallback;
+  const setOutputCallback = lifecycle.setOutputCallbackOverride ?? nodeState.setOutput;
+  const output = lifecycle.outputOverride ?? nodeState.output
   const showLoading = lifecycle.showLoading ?? false;
+  const disablePlay = lifecycle.disablePlay ?? adapter.container.disablePlay ?? false;
+
+  const { signalNodeExecDone, dashboardOn } = useFlowContext();
+  const lastTriggerExecRef = useRef<number>(data.triggerExec ?? 0);
+  const outputCodeRef = useRef(output?.code);
+
+  useEffect(() => {
+    const current = data.triggerExec ?? 0;
+    if (current <= lastTriggerExecRef.current) return;
+    lastTriggerExecRef.current = current;
+    if (disablePlay || !sendCode) {
+      signalNodeExecDone(data.nodeId);
+      return;
+    }
+    setOutputCallback({ code: "exec", content: "" });
+    sendCode(nodeState.code);
+  }, [data.triggerExec]);
+
+  useEffect(() => {
+    outputCodeRef.current = output?.code;
+    if (output?.code === "error") {
+      signalNodeExecDone(data.nodeId);
+    }
+  }, [output?.code]);
+
+  // Signal done on unmount if the node was still executing (e.g. deleted while running).
+  useEffect(() => {
+    return () => {
+      if (outputCodeRef.current === "exec") {
+        signalNodeExecDone(data.nodeId);
+      }
+    };
+  }, []);
   const defaultValue =
     lifecycle.defaultValueOverride ??
-    (boxState.templateData.code ? boxState.templateData.code : data.defaultCode);
+    (nodeState.templateData.code ? nodeState.templateData.code : data.defaultCode);
   const readOnly =
-    boxState.templateData.custom != undefined && boxState.templateData.custom === false;
+    nodeState.templateData.custom != undefined && nodeState.templateData.custom === false;
 
   const allHandles = [...adapter.handles, ...(lifecycle.dynamicHandles ?? [])];
 
   return (
     <>
-      {allHandles.map((h: HandleDef) => {
+      {!dashboardOn && allHandles.map((h: HandleDef) => {
         const connectable =
           h.isConnectableOverride
             ? h.isConnectableOverride(data, isConnectable, edges)
@@ -55,59 +88,54 @@ function UniversalBox({ data, isConnectable }: { data: any; isConnectable: boole
         );
       })}
 
-      <BoxContainer
+      <NodeContainer
         nodeId={data.nodeId}
         data={data}
         handleType={adapter.container.handleType}
         isLoading={showLoading}
         noContent={adapter.container.noContent}
-        boxWidth={adapter.container.boxWidth}
-        boxHeight={adapter.container.boxHeight}
-        styles={adapter.container.styles as any}
-        disablePlay={adapter.container.disablePlay}
-        output={output && {
-  ...output,
-  content: typeof output.content === 'string'
-    ? output.content
-    : JSON.stringify(output.content),
-}}
-        templateData={boxState.templateData}
-        code={boxState.code}
-        user={boxState.user}
+        nodeWidth={data.nodeWidth ?? adapter.container.nodeWidth}
+        nodeHeight={data.nodeHeight ?? adapter.container.nodeHeight}
+        styles={adapter.container.styles as CSS.Properties<0 | (string & {}), string & {}> | undefined}
+        disablePlay={disablePlay}
+        output={output}
+        templateData={nodeState.templateData}
+        code={nodeState.code}
+        user={nodeState.user}
         sendCodeToWidgets={sendCode}
         setOutputCallback={setOutputCallback}
-        promptModal={adapter.showTemplateModal ? boxState.promptModal : undefined}
-        updateTemplate={adapter.showTemplateModal ? boxState.updateTemplate : undefined}
-        setTemplateConfig={adapter.showTemplateModal ? boxState.setTemplateConfig : undefined}
-        promptDescription={boxState.promptDescription}
+        promptModal={adapter.showTemplateModal ? nodeState.promptModal : undefined}
+        updateTemplate={adapter.showTemplateModal ? nodeState.updateTemplate : undefined}
+        setTemplateConfig={adapter.showTemplateModal ? nodeState.setTemplateConfig : undefined}
+        promptDescription={nodeState.promptDescription}
       >
-        {adapter.inputIconType && <InputIcon type={(adapter.inputIconType ?? '1') as '1' | '2' | 'N'} />}
+        {!dashboardOn && adapter.inputIconType && <InputIcon type={adapter.inputIconType as TIconCardinality} />}
 
         <DescriptionModal
           nodeId={data.nodeId}
-          boxType={descriptor.id}
-          name={boxState.templateData.name}
-          description={boxState.templateData.description}
-          accessLevel={boxState.templateData.accessLevel}
-          show={boxState.showDescriptionModal}
-          handleClose={boxState.closeDescription}
-          custom={boxState.templateData.custom}
+          nodeType={descriptor.id}
+          name={nodeState.templateData.name}
+          description={nodeState.templateData.description}
+          accessLevel={nodeState.templateData.accessLevel}
+          show={nodeState.showDescriptionModal}
+          handleClose={nodeState.closeDescription}
+          custom={nodeState.templateData.custom}
         />
 
         {adapter.showTemplateModal && (
           <TemplateModal
-            newTemplateFlag={boxState.newTemplateFlag}
-            templateId={boxState.templateData.id}
-            callBack={boxState.setTemplateConfig}
-            show={boxState.showTemplateModal}
-            handleClose={boxState.closeModal}
-            boxType={descriptor.id}
-            code={boxState.code}
+            newTemplateFlag={nodeState.newTemplateFlag}
+            templateId={nodeState.templateData.id}
+            callBack={nodeState.setTemplateConfig}
+            show={nodeState.showTemplateModal}
+            handleClose={nodeState.closeModal}
+            nodeType={descriptor.id}
+            code={nodeState.code}
           />
         )}
 
         {adapter.editor && (
-          <BoxEditor
+          <NodeEditor
             outputId={adapter.editor.outputId?.(data.nodeId)}
             setSendCodeCallback={setSendCodeCallback}
             code={adapter.editor.code}
@@ -118,20 +146,20 @@ function UniversalBox({ data, isConnectable }: { data: any; isConnectable: boole
             setOutputCallback={setOutputCallback}
             data={data}
             output={output}
-            boxType={descriptor.id}
+            nodeType={descriptor.id}
             applyGrammar={lifecycle.applyGrammar}
             customWidgetsCallback={lifecycle.customWidgetsCallback}
             defaultValue={defaultValue}
             readOnly={readOnly}
-            floatCode={boxState.setCode}
+            floatCode={nodeState.setCode}
             contentComponent={lifecycle.contentComponent}
           />
         )}
 
-        {adapter.outputIconType && <OutputIcon type={(adapter.outputIconType ?? '1') as '1' | '2' | 'N'} />}
-      </BoxContainer>
+        {!dashboardOn && adapter.outputIconType && <OutputIcon type={adapter.outputIconType as TIconCardinality} />}
+      </NodeContainer>
     </>
   );
-}
+});
 
-export default UniversalBox;
+export default UniversalNode;
